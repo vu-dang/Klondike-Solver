@@ -32,6 +32,7 @@ private:
 public:
 	void Initialize();
 	int Shuffle1(int dealNumber = -1);
+	int ShuffleFC(int deal_number);
 	void Shuffle2(int dealNumber);
 	void ResetGame();
 	void ResetGame(int drawCount);

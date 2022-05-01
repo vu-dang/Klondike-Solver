@@ -63,7 +63,8 @@ int main(int argc, char * argv[]) {
 			if (i + 1 >= argc) { cout << "You must specify a game number to load. Any integeral number."; return 0; }
 			if (commandLoaded) { cout << "Only one method can be specified (deck/game/file)."; return 0; }
 			commandLoaded = true;
-			s.Shuffle1(atoi(argv[i + 1]));
+			//s.Shuffle1(atoi(argv[i + 1]));
+			s.ShuffleFC(atoi(argv[i + 1]));
 			i++;
 		} else if (_stricmp(argv[i], "-out") == 0 || _stricmp(argv[i], "/out") == 0 || _stricmp(argv[i], "-o") == 0 || _stricmp(argv[i], "/o") == 0) {
 			if (i + 1 >= argc) { cout << "You must specify a valid output method. 0 or 1."; return 0; }
@@ -122,20 +123,19 @@ int main(int argc, char * argv[]) {
 	if (maxClosedCount == 0) { maxClosedCount = 5000000; }
 
 	unsigned int fileIndex = 0;
-	do {
-		if (fileContents.size() > fileIndex) {
-			if (!LoadGame(fileContents, s, fileIndex)) {
-				continue;
-			}
-		}
+	for (int deal = 1; deal < 10000; deal ++) {
+
+		s.ShuffleFC(deal);
+
 		s.ResetGame();
 
+/*
 		if (outputMethod == 0) {
 			cout << s.GameDiagram() << "\n\n";
 		} else if (outputMethod == 1) {
 			cout << s.GameDiagramPysol() << "\n\n";
 		}
-
+*/
 		clock_t total = clock();
 		SolveResult result = CouldNotComplete;
 		if (fastMode) {
@@ -172,6 +172,12 @@ int main(int argc, char * argv[]) {
 		}
 
 		bool canReplay = false;
+
+		if (result == SolvedMayNotBeMinimal) {
+			printf("%d,%d,%lu\n",deal,s.MovesMadeNormalizedCount(),(clock() - total));
+		}
+
+		/*
 		if (result == SolvedMinimal) {
 			cout << "Minimal solution in " << s.MovesMadeNormalizedCount() << " moves.";
 			canReplay = true;
@@ -206,7 +212,8 @@ int main(int argc, char * argv[]) {
 		} else if (showMoves) {
 			cout << "\n";
 		}
-	} while (fileContents.size() > fileIndex);
+		*/
+	} 
 
 	return 0;
 }

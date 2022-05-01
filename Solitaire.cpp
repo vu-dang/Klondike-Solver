@@ -778,6 +778,39 @@ int Solitaire::Shuffle1(int dealNumber) {
 
 	return dealNumber;
 }
+
+int Solitaire::ShuffleFC(int deal_num) {
+  int deck[52]; 
+  for (int i = 0; i < 52; i++) { deck[i] = i;}
+
+  int seed = deal_num;  
+  for (int i = 0; i < 52; ++i) {
+    int cards_left = 52 - i;
+    seed = (seed * 214013 + 2531011) & 0xffffffff;
+    int rand = (seed >> 16) & 0x7fff;
+    int rect = deal_num < 0x80000000 ? rand % cards_left : (rand | 0x8000) % cards_left;
+
+	// swap
+	int temp = deck[rect];
+	deck[rect] = deck[cards_left - 1];
+	deck[cards_left - 1] = temp;
+    //[deck[rect], deck[cards_left - 1]] = [deck[cards_left - 1], deck[rect]];
+	
+  }
+  //return deck.reverse();
+
+  int suits[] = {CLUBS,DIAMONDS,HEARTS,SPADES};
+  for (int i = 0; i < 52; i++) { 
+	  int rank = deck[i] >> 2;
+	  int suitFC = deck[i] & 3;
+	  int suit = suits[suitFC];
+	  int value = suit * 13 + rank;
+	  cards[51-i].Set(value);
+  }
+
+  return deal_num;
+}
+
 void Solitaire::Shuffle2(int dealNumber) {
 	for (int i = 0; i < 26; i++) { cards[i].Set(i); }
 	for (int i = 39; i < 52; i++) { cards[i].Set(i - 13); }
