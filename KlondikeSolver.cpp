@@ -45,6 +45,7 @@ int main(int argc, char * argv[]) {
 	string fileContents;
 	bool replay = false;
 	bool showMoves = false;
+	int gameNumber = 1;
 
 	for (int i = 1; i < argc; i++) {
 		if (_stricmp(argv[i], "-draw") == 0 || _stricmp(argv[i], "/draw") == 0 || _stricmp(argv[i], "-dc") == 0 || _stricmp(argv[i], "/dc") == 0) {
@@ -64,7 +65,8 @@ int main(int argc, char * argv[]) {
 			if (commandLoaded) { cout << "Only one method can be specified (deck/game/file)."; return 0; }
 			commandLoaded = true;
 			//s.Shuffle1(atoi(argv[i + 1]));
-			s.ShuffleFC(atoi(argv[i + 1]));
+			//s.ShuffleFC(atoi(argv[i + 1]));
+			gameNumber = atoi(argv[i + 1]);
 			i++;
 		} else if (_stricmp(argv[i], "-out") == 0 || _stricmp(argv[i], "/out") == 0 || _stricmp(argv[i], "-o") == 0 || _stricmp(argv[i], "/o") == 0) {
 			if (i + 1 >= argc) { cout << "You must specify a valid output method. 0 or 1."; return 0; }
@@ -123,7 +125,7 @@ int main(int argc, char * argv[]) {
 	if (maxClosedCount == 0) { maxClosedCount = 5000000; }
 
 	unsigned int fileIndex = 0;
-	for (int deal = 1; deal < 10000; deal ++) {
+	for (int deal = gameNumber; deal < 10000; deal ++) {
 
 		s.ShuffleFC(deal);
 
@@ -173,46 +175,48 @@ int main(int argc, char * argv[]) {
 
 		bool canReplay = false;
 
-		if (result == SolvedMayNotBeMinimal) {
-			printf("%d,%d,%lu\n",deal,s.MovesMadeNormalizedCount(),(clock() - total));
-		}
-
-		/*
-		if (result == SolvedMinimal) {
-			cout << "Minimal solution in " << s.MovesMadeNormalizedCount() << " moves.";
-			canReplay = true;
-		} else if (result == SolvedMayNotBeMinimal) {
-			cout << "Solved in " << s.MovesMadeNormalizedCount() << " moves.";
-			canReplay = true;
-		} else if (result == Impossible) {
-			cout << "Impossible. Max cards in foundation " << s.FoundationCount() << " at " << s.MovesMadeNormalizedCount() << " moves.";
-		} else if (result == CouldNotComplete) {
-			cout << "Unknown. Max cards in foundation " << s.FoundationCount() << " at " << s.MovesMadeNormalizedCount() << " moves.";
-		}
-		cout << " Took " << (clock() - total) << " ms.\n";
-
-		if (outputMethod < 2 && replay && canReplay) {
-			int movesToMake = s.MovesMadeCount();
-			s.ResetGame();
-			for (int i = 0; i < movesToMake; i++) {
-				cout << "----------------------------------------\n";
-				cout << s.GetMoveInfo(s[i]) << "\n\n";
-				s.MakeMove(s[i]);
-
-				if (outputMethod == 0) {
-					cout << s.GameDiagram() << "\n\n";
-				} else {
-					cout << s.GameDiagramPysol() << "\n\n";
-				}
+		if (!showMoves) {
+			if (result == SolvedMinimal) {
+				printf("%d,%d,%lu\n",deal,s.MovesMadeNormalizedCount(),(clock() - total));
 			}
-			cout << "----------------------------------------\n";
+		} else {
+			printf("%d\n",deal);							
+			if (result == SolvedMinimal) {
+				cout << "Minimal solution in " << s.MovesMadeNormalizedCount() << " moves.";
+				canReplay = true;
+			} else if (result == SolvedMayNotBeMinimal) {
+				cout << "Solved in " << s.MovesMadeNormalizedCount() << " moves.";
+				canReplay = true;
+			} else if (result == Impossible) {
+				cout << "Impossible. Max cards in foundation " << s.FoundationCount() << " at " << s.MovesMadeNormalizedCount() << " moves.";
+			} else if (result == CouldNotComplete) {
+				cout << "Unknown. Max cards in foundation " << s.FoundationCount() << " at " << s.MovesMadeNormalizedCount() << " moves.";
+			}
+			cout << " Took " << (clock() - total) << " ms.\n";
+
+			if (outputMethod < 2 && replay && canReplay) {
+				int movesToMake = s.MovesMadeCount();
+				s.ResetGame();
+				for (int i = 0; i < movesToMake; i++) {
+					cout << "----------------------------------------\n";
+					cout << s.GetMoveInfo(s[i]) << "\n\n";
+					s.MakeMove(s[i]);
+
+					if (outputMethod == 0) {
+						cout << s.GameDiagram() << "\n\n";
+					} else {
+						cout << s.GameDiagramPysol() << "\n\n";
+					}
+				}
+				cout << "----------------------------------------\n";
+			}
+			if (showMoves && canReplay) {
+				cout << s.MovesMade() << "\n\n";
+			} else if (showMoves) {
+				cout << "\n";
+			}
+			break;
 		}
-		if (showMoves && canReplay) {
-			cout << s.MovesMade() << "\n\n";
-		} else if (showMoves) {
-			cout << "\n";
-		}
-		*/
 	} 
 
 	return 0;

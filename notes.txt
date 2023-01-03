@@ -1,0 +1,4 @@
+make
+./KlondikeSolver /DRAW 3 /MULTI 2 /MOVES /GAME 3
+./KlondikeSolver /DRAW 3 /MULTI 2 
+./KlondikeSolver /DRAW 3 /MULTI 2 > results.csv
