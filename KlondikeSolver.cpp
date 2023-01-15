@@ -128,8 +128,16 @@ int main(int argc, char * argv[]) {
 	for (int deal = gameNumber; deal < 10000; deal ++) {
 
 		s.ShuffleFC(deal);
+		if (showMoves) {
+			string diagram = s.GameDiagram();
+			cout << diagram;
+		} 
 
 		s.ResetGame();
+		if (showMoves) {
+			string diagram = s.GameDiagram();
+			cout << diagram;
+		} 
 
 /*
 		if (outputMethod == 0) {
@@ -181,6 +189,8 @@ int main(int argc, char * argv[]) {
 			}
 		} else {
 			printf("%d\n",deal);							
+			string diagram = s.GameDiagram();
+			cout << diagram; 
 			if (result == SolvedMinimal) {
 				cout << "Minimal solution in " << s.MovesMadeNormalizedCount() << " moves.";
 				canReplay = true;
