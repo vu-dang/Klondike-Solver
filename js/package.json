@@ -1,0 +1,14 @@
+{
+	"name": "klondike-solver",
+	"version": "1.0.0",
+	"description": "Klondike (Patience) Solitaire solver, ported to JavaScript for use in React Native",
+	"type": "module",
+	"main": "src/index.js",
+	"exports": {
+		".": "./src/index.js"
+	},
+	"scripts": {
+		"test": "node test/run-tests.js"
+	},
+	"license": "MIT"
+}
