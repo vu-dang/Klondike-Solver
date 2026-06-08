@@ -29,25 +29,32 @@ FilePath - Solves deals specified in the file.
 SimpleSolver (variation)
 
 A second front end is built alongside KlondikeSolver. It deals a game by its
-FreeCell (FC) game number and solves it with a constrained "simple method".
+FreeCell (FC) game number and solves it with a constrained exhaustive search.
 
-SimpleSolver [/G #] [/DC #] [/S #] [/MVS] [/R] [#]
+SimpleSolver [/G #] [/DC #] [/S #] [/SIMPLER] [/MVS] [/R] [#]
 
   /GAME # [/G #]    FC game number to deal and solve. Defaults to 1.
   /DRAW # [/DC #]   Draw count to use. Defaults to 1.
   /STATES # [/S #]  Max game states to evaluate. Defaults to 5,000,000.
+  /SIMPLER          Use the simpler method instead of the simple method.
   /MOVES [/MVS]     Output the compact list of moves made when solved.
   /R                Replay the solution step by step to output.
   #                 A bare number is treated as the FC game number.
 
-The simple method is the same full exhaustive search as the minimal solver, with a
-single added rule: it is not allowed to draw from the stock while any other move is
-available (a move between tableau columns, a move to a foundation, or a move of the
-current draw card onto a tableau column). When one or more such moves exist, every
-one of them is still explored as its own branch; only once nothing else can be played
-is the solver allowed to flip cards from the stock. It therefore reports the minimal
-solution that obeys this constraint, or that the deal is impossible under it (which
-can happen even for deals the unconstrained solver can win).
+Both methods are the same full exhaustive search as the minimal solver, but they
+prune the set of branches explored at every state:
+
+  simple  (default) - it is not allowed to draw from the stock while any other move is
+          available (a move between tableau columns, a move to a foundation, or a move
+          of the current draw card onto a tableau column).
+
+  simpler (/SIMPLER) - the simple rule, plus: when any move onto a foundation is
+          available, only the foundation moves are explored.
+
+Every surviving branch is still searched exhaustively, so each method reports the
+minimal solution obeying its constraints, or that the deal is impossible under them
+(which can happen even for deals the unconstrained solver can win; the simpler method
+is the most restrictive and so solves the fewest deals).
 
 ========================
 NOTES:

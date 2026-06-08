@@ -30,6 +30,7 @@ private:
 	int FoundationMin();
 	int GetTalonCards(Card talon[], int talonMoves[]);
 	void FilterSimpleMoves();
+	void FilterSimplerMoves();
 public:
 	void Initialize();
 	int Shuffle1(int dealNumber = -1);
@@ -46,6 +47,7 @@ public:
 	SolveResult SolveMinimal(int maxClosedCount);
 	SolveResult SolveFast(int maxClosedCount, int twoShift, int threeShift);
 	SolveResult SolveSimple(int maxClosedCount);
+	SolveResult SolveSimpler(int maxClosedCount);
 	SolveResult SolveRandom(int numberOfTimesToPlay, int solutionsToFind);
 	int MovesAvailableCount();
 	int MovesMadeCount();
