@@ -31,18 +31,19 @@ SimpleSolver (variation)
 A second front end is built alongside KlondikeSolver. It deals a game by its
 FreeCell (FC) game number and solves it with a constrained exhaustive search.
 
-SimpleSolver [/G #] [/DC #] [/S #] [/SIMPLER] [/MVS] [/R] [#]
+SimpleSolver [/G #] [/DC #] [/S #] [/SIMPLER] [/AVERAGE] [/MVS] [/R] [#]
 
   /GAME # [/G #]    FC game number to deal and solve. Defaults to 1.
   /DRAW # [/DC #]   Draw count to use. Defaults to 1.
   /STATES # [/S #]  Max game states to evaluate. Defaults to 5,000,000.
   /SIMPLER          Use the simpler method instead of the simple method.
+  /AVERAGE [/AVG]   Use the average method instead of the simple method.
   /MOVES [/MVS]     Output the compact list of moves made when solved.
   /R                Replay the solution step by step to output.
   #                 A bare number is treated as the FC game number.
 
-Both methods are the same full exhaustive search as the minimal solver, but they
-prune the set of branches explored at every state:
+Every method is the same full exhaustive search as the minimal solver, but each prunes
+the set of branches explored at every state:
 
   simple  (default) - it is not allowed to draw from the stock while any other move is
           available (a move between tableau columns, a move to a foundation, or a move
@@ -51,10 +52,14 @@ prune the set of branches explored at every state:
   simpler (/SIMPLER) - the simple rule, plus: when any move onto a foundation is
           available, only the foundation moves are explored.
 
+  average (/AVERAGE) - drawing from the stock is unrestricted, but the search never
+          takes a card back off a foundation onto the tableau.
+
 Every surviving branch is still searched exhaustively, so each method reports the
 minimal solution obeying its constraints, or that the deal is impossible under them
-(which can happen even for deals the unconstrained solver can win; the simpler method
-is the most restrictive and so solves the fewest deals).
+(which can happen even for deals the unconstrained solver can win). The simpler method
+is the most restrictive and solves the fewest deals; the average method only forbids
+the rarely needed foundation-to-tableau move and so stays closest to the true minimal.
 
 ========================
 NOTES:

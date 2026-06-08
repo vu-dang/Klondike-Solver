@@ -470,6 +470,26 @@ void Solitaire::FilterSimplerMoves() {
 	}
 	movesAvailableCount = write;
 }
+void Solitaire::FilterAverageMoves() {
+	//The "average" method runs the full exhaustive search (drawing from the stock is
+	//unrestricted) but never considers taking a card back off a foundation, i.e. any move
+	//whose source is a foundation pile. Every other branch is explored just as the minimal
+	//solver would. Those foundation to tableau moves are rarely needed to solve optimally,
+	//so dropping them prunes the search at the cost of missing the few deals that require
+	//un-playing a foundation card.
+	int kept = 0;
+	for (int i = 0; i < movesAvailableCount; i++) {
+		if (movesAvailable[i].From < FOUNDATION1C) { kept++; }
+	}
+
+	if (kept == movesAvailableCount) { return; }
+
+	int write = 0;
+	for (int i = 0; i < movesAvailableCount; i++) {
+		if (movesAvailable[i].From < FOUNDATION1C) { movesAvailable[write++] = movesAvailable[i]; }
+	}
+	movesAvailableCount = write;
+}
 SolveResult Solitaire::SolveSimple(int maxClosedCount) {
 	//Exhaustive best-first search, identical to SolveMinimal except that the set of
 	//branches explored at each state is first passed through FilterSimpleMoves: drawing
@@ -679,6 +699,135 @@ SolveResult Solitaire::SolveSimpler(int maxClosedCount) {
 		movesTotal = MovesMadeNormalizedCount();
 		//Abandon any branch that has grown pathologically deep (e.g. a forced cycle the
 		//constraint cannot escape) so the move buffers and open index stay in bounds.
+		if (movesMadeCount >= 480) { continue; }
+
+		//Check for best solution to foundations
+		if (foundationCount > maxFoundationCount || (foundationCount == maxFoundationCount && bestSolutionMoveCount > movesTotal)) {
+			bestSolutionMoveCount = movesTotal;
+			maxFoundationCount = foundationCount;
+
+			//Save solution
+			for (int i = 0; i < movesMadeCount; i++) {
+				bestSolution[i] = movesMade[i];
+			}
+			bestSolution[movesMadeCount].Count = 255;
+		} else if (maxFoundationCount == 52) {
+			//Dont check state if above or equal to current best solution
+			int helper = MinimumMovesLeft();
+			helper += movesTotal;
+			if (helper >= bestSolutionMoveCount) { continue; }
+		}
+
+		//Make available moves and add them to be evaulated
+		for (int i = 0; i < movesAvailableCount; i++) {
+			Move move = movesAvailable[i];
+			int movesAdded = MovesAdded(move);
+
+			MakeMove(move);
+
+			movesAdded += movesTotal;
+			movesAdded += MinimumMovesLeft();
+			if (maxFoundationCount < 52 || movesAdded < bestSolutionMoveCount) {
+				int helper = movesAdded;
+				helper += 52 - foundationCount + roundCount;
+				HashKey key = GameState();
+				KeyValue<int> * result = closed.Add(key, movesAdded);
+				if (result == NULL || result->Value > movesAdded) {
+					node = make_shared<MoveNode>(move, firstNode);
+					if (result != NULL) { result->Value = movesAdded; }
+
+					totalOpenCount++;
+					openCount++;
+					open[helper].push(node);
+				}
+			}
+
+			UndoMove();
+		}
+	}
+
+	//Reset game to best solution found
+	ResetGame(drawCount);
+	for (int i = 0; bestSolution[i].Count < 255; i++) {
+		MakeMove(bestSolution[i]);
+	}
+	return closed.Size() >= maxClosedCount ? (maxFoundationCount == 52 ? SolvedMayNotBeMinimal : CouldNotComplete) : (maxFoundationCount == 52 ? SolvedMinimal : Impossible);
+}
+SolveResult Solitaire::SolveAverage(int maxClosedCount) {
+	//Exhaustive best-first search identical to SolveMinimal, but the branch set at each
+	//state is passed through FilterAverageMoves: moves that take a card back off a
+	//foundation are never considered. Drawing from the stock is unrestricted. Returns the
+	//minimal solution that never un-plays a foundation card, or Impossible if none exists.
+	UpdateAvailableMoves();
+	FilterAverageMoves();
+	while (movesAvailableCount == 1 && movesMadeCount < 480) {
+		MakeMove(movesAvailable[0]);
+		UpdateAvailableMoves();
+		FilterAverageMoves();
+	}
+	if (movesAvailableCount == 0) { return foundationCount == 52 ? SolvedMinimal : Impossible; }
+
+	int openCount = 1;
+	int maxFoundationCount = foundationCount;
+	int bestSolutionMoveCount = 512;
+	int totalOpenCount = 1;
+
+	int powerOf2 = 1;
+	while (maxClosedCount > (1 << (powerOf2 + 2))) {
+		powerOf2++;
+	}
+	HashMap<int> closed(powerOf2);
+	stack<shared_ptr<MoveNode>> open[512];
+	Move movesToMake[512];
+	Move bestSolution[512];
+	bestSolution[0].Count = 255;
+	int startMoves = MinimumMovesLeft() + MovesMadeNormalizedCount();
+
+	shared_ptr<MoveNode> firstNode = movesMadeCount > 0 ? make_shared<MoveNode>(movesMade[movesMadeCount - 1]) : NULL;
+	shared_ptr<MoveNode> node = firstNode;
+	for (int i = movesMadeCount - 2; i >= 0; i--) {
+		node->Parent = make_shared<MoveNode>(movesMade[i]);
+		node = node->Parent;
+	}
+	open[startMoves].push(firstNode);
+	while (closed.Size() < maxClosedCount) {
+		//Check for lowest score length
+		int index = startMoves;
+		while (index < 512 && open[index].size() == 0) { index++; }
+
+		//End solver if no more states
+		if (index >= 512) { break; }
+
+		//Get next state to evaluate
+		openCount--;
+		firstNode = open[index].top();
+		open[index].pop();
+
+		//Initialize game to the found state
+		ResetGame(drawCount);
+		int movesTotal = 0;
+		node = firstNode;
+		while (node != NULL) {
+			movesToMake[movesTotal++] = node->Value;
+			node = node->Parent;
+		}
+		while (movesTotal > 0) {
+			MakeMove(movesToMake[--movesTotal]);
+		}
+
+		//Make any forced moves (a single allowed move under the average constraint)
+		UpdateAvailableMoves();
+		FilterAverageMoves();
+		while (movesAvailableCount == 1 && movesMadeCount < 480) {
+			Move move = movesAvailable[0];
+			MakeMove(move);
+			firstNode = make_shared<MoveNode>(move, firstNode);
+			UpdateAvailableMoves();
+			FilterAverageMoves();
+		}
+		movesTotal = MovesMadeNormalizedCount();
+		//Abandon any branch that has grown pathologically deep so the move buffers and
+		//open index stay in bounds.
 		if (movesMadeCount >= 480) { continue; }
 
 		//Check for best solution to foundations
