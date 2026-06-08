@@ -25,7 +25,7 @@ private:
 	Card cards[52];
 	Move movesAvailable[32];
 	Random random;
-	int drawCount, roundCount, foundationCount, movesAvailableCount, movesMadeCount;
+	int drawCount, roundCount, foundationCount, movesAvailableCount, movesMadeCount, maxRounds;
 
 	int FoundationMin();
 	int GetTalonCards(Card talon[], int talonMoves[]);
@@ -60,6 +60,8 @@ public:
 	int MovesAdded(Move const& move);
 	int MinimumMovesLeft();
 	void SetDrawCount(int drawCount);
+	void SetMaxRounds(int maxRounds);
+	int MaxRounds();
 	HashKey GameState();
 	string GetMoveInfo(Move move);
 	bool LoadSolitaire(string const& cardSet);
