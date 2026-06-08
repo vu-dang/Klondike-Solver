@@ -8,15 +8,15 @@
 using namespace std;
 
 //A variation of the Klondike solver that deals a game by its FreeCell (FC) game
-//number and solves it with a constrained exhaustive search. Three constraint sets are
-//available:
+//number and solves it. By default it runs the same full, unconstrained exhaustive
+//search as the minimal solver. Three optional constraint sets are also available:
 //
-//  intermediate (default) - the same full exhaustive search as the minimal solver, with
-//          a single added rule: it is not allowed to draw from the stock while any other
-//          move is available (a move between tableau columns, a move to a foundation,
-//          or a move of the current draw card onto a tableau column).
+//  simple (/SIMPLE) - the unconstrained exhaustive search with a single added rule:
+//          it is not allowed to draw from the stock while any other move is available
+//          (a move between tableau columns, a move to a foundation, or a move of the
+//          current draw card onto a tableau column).
 //
-//  beginner (/BEGINNER) - the intermediate rule plus a second one: when any move onto a
+//  beginner (/BEGINNER) - the simple rule plus a second one: when any move onto a
 //          foundation is available, only the foundation moves are explored.
 //
 //  expert (/EXPERT) - a different restriction: drawing from the stock is unrestricted,
@@ -25,6 +25,43 @@ using namespace std;
 //In every case the remaining branches are still searched exhaustively, so the result is
 //the minimal solution obeying the chosen constraints, or that the deal is impossible
 //under them (which can happen even for deals the unconstrained solver can win).
+//
+//The constraint set is chosen with /CONSTRAINT <mode>, where <mode> is one of
+//beginner, simple, expert, or stepup. With no /CONSTRAINT the unconstrained minimal
+//solver is used. "stepup" escalates beginner -> simple -> expert -> unconstrained,
+//stopping at the first mode that solves the deal.
+
+static bool IsSolved(SolveResult result) {
+	return result == SolvedMinimal || result == SolvedMayNotBeMinimal;
+}
+
+//Resets the dealt game and runs the single solver matching mode. Anything other than
+//beginner/simple/expert runs the unconstrained minimal solver.
+static SolveResult RunSolve(Solitaire & s, int drawCount, int maxStates, const char * mode) {
+	s.ResetGame(drawCount);
+	if (_stricmp(mode, "beginner") == 0) { return s.SolveBeginner(maxStates); }
+	if (_stricmp(mode, "simple") == 0) { return s.SolveIntermediate(maxStates); }
+	if (_stricmp(mode, "expert") == 0) { return s.SolveExpert(maxStates); }
+	return s.SolveMinimal(maxStates);
+}
+
+//Solves the already-dealt game under the requested constraint. For "stepup" it escalates
+//beginner -> simple -> expert -> unconstrained, stopping at the first mode that solves.
+//Sets usedMode to the mode that produced the returned result.
+static SolveResult SolveConstraint(Solitaire & s, int drawCount, int maxStates, const char * constraint, const char * & usedMode) {
+	if (_stricmp(constraint, "stepup") == 0) {
+		static const char * ladder[] = { "beginner", "simple", "expert", "unconstrained" };
+		SolveResult result = Impossible;
+		for (int i = 0; i < 4; i++) {
+			result = RunSolve(s, drawCount, maxStates, ladder[i]);
+			usedMode = ladder[i];
+			if (IsSolved(result)) { return result; }
+		}
+		return result;
+	}
+	usedMode = constraint;
+	return RunSolve(s, drawCount, maxStates, constraint);
+}
 
 int main(int argc, char * argv[]) {
 	Solitaire s;
@@ -36,8 +73,7 @@ int main(int argc, char * argv[]) {
 	int maxStates = 5000000;
 	bool showMoves = false;
 	bool replay = false;
-	bool beginner = false;
-	bool expert = false;
+	const char * constraint = "unconstrained";
 
 	for (int i = 1; i < argc; i++) {
 		if (_stricmp(argv[i], "-game") == 0 || _stricmp(argv[i], "/game") == 0 || _stricmp(argv[i], "-g") == 0 || _stricmp(argv[i], "/g") == 0) {
@@ -54,27 +90,33 @@ int main(int argc, char * argv[]) {
 			if (i + 1 >= argc) { cout << "You must specify max states.\n"; return 0; }
 			maxStates = atoi(argv[++i]);
 			if (maxStates < 1) { cout << "You must specify a valid max number of states.\n"; return 0; }
-		} else if (_stricmp(argv[i], "-beginner") == 0 || _stricmp(argv[i], "/beginner") == 0) {
-			beginner = true;
-		} else if (_stricmp(argv[i], "-expert") == 0 || _stricmp(argv[i], "/expert") == 0 || _stricmp(argv[i], "-exp") == 0 || _stricmp(argv[i], "/exp") == 0) {
-			expert = true;
+		} else if (_stricmp(argv[i], "-constraint") == 0 || _stricmp(argv[i], "/constraint") == 0 || _stricmp(argv[i], "-c") == 0 || _stricmp(argv[i], "/c") == 0) {
+			if (i + 1 >= argc) { cout << "You must specify a constraint: beginner, simple, expert, or stepup.\n"; return 0; }
+			constraint = argv[++i];
+			if (_stricmp(constraint, "beginner") != 0 && _stricmp(constraint, "simple") != 0 && _stricmp(constraint, "expert") != 0 && _stricmp(constraint, "stepup") != 0) {
+				cout << "Invalid constraint '" << constraint << "'. Use beginner, simple, expert, or stepup.\n"; return 0;
+			}
 		} else if (_stricmp(argv[i], "-mvs") == 0 || _stricmp(argv[i], "/mvs") == 0 || _stricmp(argv[i], "-moves") == 0 || _stricmp(argv[i], "/moves") == 0) {
 			showMoves = true;
 		} else if (_stricmp(argv[i], "-r") == 0 || _stricmp(argv[i], "/r") == 0) {
 			replay = true;
 		} else if (_stricmp(argv[i], "-?") == 0 || _stricmp(argv[i], "/?") == 0 || _stricmp(argv[i], "?") == 0 || _stricmp(argv[i], "/help") == 0 || _stricmp(argv[i], "-help") == 0) {
 			cout << "SimpleSolver\n";
-			cout << "Deals a Klondike game by FreeCell (FC) game number and solves it with a\n";
-			cout << "constrained exhaustive search. Defaults to the intermediate method, which never\n";
-			cout << "draws from stock while another move exists.\n\n";
-			cout << "SimpleSolver [/G #] [/DC #] [/S #] [/BEGINNER] [/EXPERT] [/MVS] [/R] [#]\n\n";
+			cout << "Deals a Klondike game by FreeCell (FC) game number and solves it. By default it\n";
+			cout << "runs a full exhaustive (unconstrained) search; a constraint set can be selected\n";
+			cout << "with /CONSTRAINT.\n\n";
+			cout << "SimpleSolver [/G #] [/DC #] [/S #] [/CONSTRAINT mode] [/MVS] [/R] [#]\n\n";
 			cout << "  /GAME # [/G #]    FC game number to deal and solve. Defaults to 1.\n";
-		cout << "  /TOGAME # [/TG #] Solve a range of games from /GAME to this number,\n";
-		cout << "                    printing CSV lines (game,moves,ms) for each solved deal.\n";
+			cout << "  /TOGAME # [/TG #] Solve a range of games from /GAME to this number,\n";
+			cout << "                    printing CSV lines per deal.\n";
 			cout << "  /DRAW # [/DC #]   Draw count to use. Defaults to 1.\n";
 			cout << "  /STATES # [/S #]  Max game states to evaluate. Defaults to 5,000,000.\n";
-			cout << "  /BEGINNER         Intermediate rule, plus explore only foundation moves when any exist.\n";
-			cout << "  /EXPERT [/EXP]    Exhaustive search that never un-plays a foundation card.\n";
+			cout << "  /CONSTRAINT mode [/C mode]  Constraint set to impose. One of:\n";
+			cout << "                      beginner - simple rule, plus explore only foundation moves when any exist.\n";
+			cout << "                      simple   - never draw from stock while another move exists.\n";
+			cout << "                      expert   - exhaustive search that never un-plays a foundation card.\n";
+			cout << "                      stepup   - try beginner, then simple, then expert, then unconstrained.\n";
+			cout << "                    Omit /CONSTRAINT to run the unconstrained minimal solver.\n";
 			cout << "  /MOVES [/MVS]     Output the compact list of moves made when solved.\n";
 			cout << "  /R                Replay the solution step by step to output.\n";
 			cout << "  #                 A bare number is treated as the FC game number.\n";
@@ -90,17 +132,16 @@ int main(int argc, char * argv[]) {
 	//and emit one CSV line (game,moves,ms) per solved deal, like KlondikeSolver.
 	if (toGame > 0) {
 		int last = toGame < gameNumber ? gameNumber : toGame;
-		printf("game,moves,time_us,num_recycles,max_states\n");
+		printf("game,moves,time_us,num_recycles,max_states,constraint\n");
 		for (int deal = gameNumber; deal <= last; deal++) {
 			s.ShuffleFC(deal);
-			s.ResetGame(drawCount);
+			const char * usedMode;
 			clock_t start = clock();
-			SolveResult result = expert ? s.SolveExpert(maxStates) : (beginner ? s.SolveBeginner(maxStates) : s.SolveIntermediate(maxStates));
+			SolveResult result = SolveConstraint(s, drawCount, maxStates, constraint, usedMode);
 			clock_t elapsed = clock() - start;
 			//Print a row for every deal; unsolved deals report 0 moves.
-			bool solved = (result == SolvedMinimal || result == SolvedMayNotBeMinimal);
-			int moves = solved ? s.MovesMadeNormalizedCount() : 0;
-			printf("%d,%d,%lu,%d,%d\n", deal, moves, (unsigned long)elapsed, s.RoundCount(), s.StatesUsed());
+			int moves = IsSolved(result) ? s.MovesMadeNormalizedCount() : 0;
+			printf("%d,%d,%lu,%d,%d,%s\n", deal, moves, (unsigned long)elapsed, s.RoundCount(), s.StatesUsed(), usedMode);
 		}
 		return 0;
 	}
@@ -108,15 +149,15 @@ int main(int argc, char * argv[]) {
 	s.ShuffleFC(gameNumber);
 	s.ResetGame(drawCount);
 
-	const char * method = expert ? "expert" : (beginner ? "beginner" : "intermediate");
-	cout << "FC Game #" << gameNumber << " (draw " << drawCount << ", " << method << " method)\n";
+	cout << "FC Game #" << gameNumber << " (draw " << drawCount << ", " << constraint << " constraint)\n";
 	cout << s.GameDiagram() << "\n\n";
 
+	const char * method;
 	clock_t start = clock();
-	SolveResult result = expert ? s.SolveExpert(maxStates) : (beginner ? s.SolveBeginner(maxStates) : s.SolveIntermediate(maxStates));
+	SolveResult result = SolveConstraint(s, drawCount, maxStates, constraint, method);
 	clock_t elapsed = clock() - start;
 
-	bool solved = (result == SolvedMinimal || result == SolvedMayNotBeMinimal);
+	bool solved = IsSolved(result);
 	if (result == SolvedMinimal) {
 		cout << "Solved with the " << method << " method in " << s.MovesMadeNormalizedCount() << " moves (minimal under its constraints).";
 	} else if (result == SolvedMayNotBeMinimal) {
