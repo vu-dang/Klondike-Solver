@@ -26,6 +26,27 @@ FilePath - Solves deals specified in the file.
 /FAST [/F] - Run the solver in a best attempt mode, which is faster, but not guaranteed to give minimal solution or one at all.
 
 ========================
+SimpleSolver (variation)
+
+A second, simpler front end is built alongside KlondikeSolver. It deals a game by
+its FreeCell (FC) game number and plays it with a greedy "simple method" instead of
+an exhaustive search.
+
+SimpleSolver [/G #] [/DC #] [/MVS] [/R] [#]
+
+  /GAME # [/G #]    FC game number to deal and solve. Defaults to 1.
+  /DRAW # [/DC #]   Draw count to use. Defaults to 1.
+  /MOVES [/MVS]     Output the compact list of moves made when solved.
+  /R                Replay the solution step by step to output.
+  #                 A bare number is treated as the FC game number.
+
+The simple method never draws from the stock while any other move is available: a
+move between tableau columns, a move to a foundation, or a move of the current draw
+(waste) card onto a tableau column. It only flips cards from the stock once nothing
+else can be played. Because it never backtracks it is fast, but unlike the minimal
+and fast solvers it will not solve every deal.
+
+========================
 NOTES:
 
 The Deck format is in the order a deck of cards is dealt to the board.  Each card is represented by a 3 digit long numerical character.  The first two digits are the value of the card:

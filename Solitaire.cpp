@@ -426,6 +426,71 @@ SolveResult Solitaire::SolveFast(int maxClosedCount, int twoShift, int threeShif
 	}
 	return maxFoundationCount == 52 ? SolvedMayNotBeMinimal : CouldNotComplete;
 }
+SolveResult Solitaire::SolveSimple(int maxMoves) {
+	//A greedy, human-like player. The defining rule of the "simple method" is that
+	//it will NOT draw from the stock while any other move is available, namely a move
+	//between tableau columns, a move to a foundation, or a move of the current draw
+	//(waste) card onto a tableau column. In this engine a draw is always coupled with
+	//the play it enables, encoded as a move with From == WASTE and Extra > 0 (the number
+	//of cards to flip from stock). Such moves are therefore only ever chosen as a last
+	//resort, once no non-draw move exists.
+	//
+	//A visited-state set guards against the greedy player cycling forever between a small
+	//set of positions. The move count is capped well under the movesMade[512] buffer.
+	if (maxMoves > 500) { maxMoves = 500; }
+
+	HashMap<int> closed(16);
+	closed.Add(GameState(), 1);
+
+	int moves = 0;
+	while (foundationCount < 52 && moves < maxMoves) {
+		UpdateAvailableMoves();
+		if (movesAvailableCount == 0) { break; }
+
+		int foundationMove = -1;	//any move onto a foundation
+		int revealMove = -1;		//a tableau move that flips a face down card
+		int otherNonDraw = -1;		//any other move that is not a stock draw
+		int drawMove = -1;			//a stock draw (From == WASTE && Extra > 0)
+		int drawExtra = 1 << 30;
+
+		for (int i = 0; i < movesAvailableCount; i++) {
+			Move m = movesAvailable[i];
+			bool isDraw = (m.From == WASTE && m.Extra > 0);
+
+			//Skip any move that would return us to an already seen position. This keeps
+			//the deterministic greedy from looping (e.g. shuffling cards between columns).
+			MakeMove(m);
+			bool visited = closed.Find(GameState()) != NULL;
+			UndoMove();
+			if (visited) { continue; }
+
+			if (isDraw) {
+				if ((int)m.Extra < drawExtra) { drawExtra = m.Extra; drawMove = i; }
+			} else if (m.To >= FOUNDATION1C) {
+				if (foundationMove == -1) { foundationMove = i; }
+			} else if (m.From != WASTE && m.Extra > 0) {
+				if (revealMove == -1) { revealMove = i; }
+			} else if (otherNonDraw == -1) {
+				otherNonDraw = i;
+			}
+		}
+
+		int chosen = -1;
+		if (foundationMove != -1) { chosen = foundationMove; }
+		else if (revealMove != -1) { chosen = revealMove; }
+		else if (otherNonDraw != -1) { chosen = otherNonDraw; }
+		else if (drawMove != -1) { chosen = drawMove; }
+
+		//No move advances to a new position: the simple method is stuck on this deal.
+		if (chosen == -1) { break; }
+
+		MakeMove(movesAvailable[chosen]);
+		closed.Add(GameState(), 1);
+		moves++;
+	}
+
+	return foundationCount == 52 ? SolvedMayNotBeMinimal : CouldNotComplete;
+}
 SolveResult Solitaire::SolveMinimalMultithreaded(int numThreads, int maxClosedCount) {
 	SolitaireWorker worker(*this, maxClosedCount);
 	return worker.Run(numThreads);

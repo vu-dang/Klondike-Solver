@@ -73,6 +73,7 @@ public:
 	int MaxLength();
 	void Clear();
 	KeyValue<T> * Add(HashKey const& key, T const& value);
+	KeyValue<T> * Find(HashKey const& key);
 };
 
 template <typename T> HashMap<T>::HashMap(int powerOf2) {
@@ -123,6 +124,19 @@ template <typename T> KeyValue<T> * HashMap<T>::Add(HashKey const& key, T const&
 
 	if (length > maxLength) { maxLength = length; }
 	if (length == 1) { slotsUsed++; }
+	return NULL;
+}
+template <typename T> KeyValue<T> * HashMap<T>::Find(HashKey const& key) {
+	int hash = key.ComputeHash();
+	int i = hash;
+	i ^= (hash >> 16);
+	i &= capacity;
+	KeyValue<T> * node = &table[i];
+
+	while (node != NULL && node->Key[0] != 0) {
+		if (node->Hash == hash && key == node->Key) { return node; }
+		node = node->Next;
+	}
 	return NULL;
 }
 template <typename T> void HashMap<T>::Clear() {

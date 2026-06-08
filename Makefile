@@ -1,26 +1,24 @@
-appname := KlondikeSolver
-
 CXX := g++
 CXXFLAGS := -Wall -g -std=c++11
+LDLIBS := -lpthread
 
-srcfiles := $(shell find . -maxdepth 1 -name "*.cpp")
-objects  := $(patsubst %.cpp, %.o, $(srcfiles))
+# Sources shared by every front end (everything except the main() files).
+shared   := Card.cpp Move.cpp Pile.cpp Random.cpp Solitaire.cpp
+sharedobj := $(patsubst %.cpp, %.o, $(shared))
 
-all: $(appname)
+all: KlondikeSolver SimpleSolver
 
-$(appname): $(objects)
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $(appname) $(objects) $(LDLIBS) -lpthread
+KlondikeSolver: KlondikeSolver.o $(sharedobj)
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-depend: .depend
+SimpleSolver: SimpleSolver.o $(sharedobj)
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-.depend: $(srcfiles)
-	rm -f ./.depend
-	$(CXX) $(CXXFLAGS) -MM $^>>./.depend;
+%.o: %.cpp
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 clean:
-	rm -f $(objects)
+	rm -f *.o
 
 dist-clean: clean
-	rm -f *~ .depend
-
-include .depend
+	rm -f *~ KlondikeSolver SimpleSolver
