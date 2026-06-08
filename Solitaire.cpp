@@ -107,6 +107,7 @@ void SolitaireWorker::RunMinimalWorker(void * closedPointer) {
 					if (result != NULL) { result->Value = movesAdded; }
 
 					openCount++;
+					if (helper > 511) { helper = 511; }
 					open[helper].push(node);
 				}
 				mtx.unlock();
@@ -138,6 +139,7 @@ SolveResult SolitaireWorker::Run(int numThreads) {
 		node->Parent = make_shared<MoveNode>(solitaire->GetMoveMade(i));
 		node = node->Parent;
 	}
+	if (startMoves > 511) { startMoves = 511; }
 	open[startMoves].push(firstNode);
 
 	thread * threads = new thread[numThreads];
@@ -266,6 +268,7 @@ SolveResult Solitaire::SolveFast(int maxClosedCount, int twoShift, int threeShif
 		node->Parent = make_shared<MoveNode>(movesMade[i]);
 		node = node->Parent;
 	}
+	if (startMoves > 511) { startMoves = 511; }
 	open[startMoves].push(firstNode);
 	while (closed.Size() < maxClosedCount) {
 		//Check for lowest score length
@@ -532,6 +535,7 @@ SolveResult Solitaire::SolveIntermediate(int maxClosedCount) {
 		node->Parent = make_shared<MoveNode>(movesMade[i]);
 		node = node->Parent;
 	}
+	if (startMoves > 511) { startMoves = 511; }
 	open[startMoves].push(firstNode);
 	while (closed.Size() < maxClosedCount) {
 		//Check for lowest score length
@@ -610,6 +614,9 @@ SolveResult Solitaire::SolveIntermediate(int maxClosedCount) {
 
 					totalOpenCount++;
 					openCount++;
+					//open[] has 512 score buckets; deep states (e.g. draw 3 under a
+					//constraint) can score past that, so cap the index to stay in bounds.
+					if (helper > 511) { helper = 511; }
 					open[helper].push(node);
 				}
 			}
@@ -664,6 +671,7 @@ SolveResult Solitaire::SolveBeginner(int maxClosedCount) {
 		node->Parent = make_shared<MoveNode>(movesMade[i]);
 		node = node->Parent;
 	}
+	if (startMoves > 511) { startMoves = 511; }
 	open[startMoves].push(firstNode);
 	while (closed.Size() < maxClosedCount) {
 		//Check for lowest score length
@@ -742,6 +750,9 @@ SolveResult Solitaire::SolveBeginner(int maxClosedCount) {
 
 					totalOpenCount++;
 					openCount++;
+					//open[] has 512 score buckets; deep states (e.g. draw 3 under a
+					//constraint) can score past that, so cap the index to stay in bounds.
+					if (helper > 511) { helper = 511; }
 					open[helper].push(node);
 				}
 			}
@@ -794,6 +805,7 @@ SolveResult Solitaire::SolveExpert(int maxClosedCount) {
 		node->Parent = make_shared<MoveNode>(movesMade[i]);
 		node = node->Parent;
 	}
+	if (startMoves > 511) { startMoves = 511; }
 	open[startMoves].push(firstNode);
 	while (closed.Size() < maxClosedCount) {
 		//Check for lowest score length
@@ -872,6 +884,9 @@ SolveResult Solitaire::SolveExpert(int maxClosedCount) {
 
 					totalOpenCount++;
 					openCount++;
+					//open[] has 512 score buckets; deep states (e.g. draw 3 under a
+					//constraint) can score past that, so cap the index to stay in bounds.
+					if (helper > 511) { helper = 511; }
 					open[helper].push(node);
 				}
 			}
@@ -918,6 +933,7 @@ SolveResult Solitaire::SolveMinimal(int maxClosedCount) {
 		node->Parent = make_shared<MoveNode>(movesMade[i]);
 		node = node->Parent;
 	}
+	if (startMoves > 511) { startMoves = 511; }
 	open[startMoves].push(firstNode);
 	while (closed.Size() < maxClosedCount) {
 		//Check for lowest score length
@@ -991,6 +1007,9 @@ SolveResult Solitaire::SolveMinimal(int maxClosedCount) {
 
 					totalOpenCount++;
 					openCount++;
+					//open[] has 512 score buckets; deep states (e.g. draw 3 under a
+					//constraint) can score past that, so cap the index to stay in bounds.
+					if (helper > 511) { helper = 511; }
 					open[helper].push(node);
 				}
 			}

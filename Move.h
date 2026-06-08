@@ -17,5 +17,6 @@ struct MoveNode {
 
 	MoveNode(Move move);
 	MoveNode(Move move, shared_ptr<MoveNode> const& parent);
+	~MoveNode();
 };
 #endif

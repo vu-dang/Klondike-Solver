@@ -36,31 +36,33 @@ static bool IsSolved(SolveResult result) {
 }
 
 //Resets the dealt game and runs the single solver matching mode. Anything other than
-//beginner/simple/expert runs the unconstrained minimal solver.
-static SolveResult RunSolve(Solitaire & s, int drawCount, int maxStates, const char * mode) {
+//beginner/simple/expert runs the unconstrained minimal solver. numThreads > 1 uses the
+//multithreaded minimal solver, which only exists for the unconstrained mode; the
+//constrained solvers always run single-threaded.
+static SolveResult RunSolve(Solitaire & s, int drawCount, int maxStates, const char * mode, int numThreads) {
 	s.ResetGame(drawCount);
 	if (_stricmp(mode, "beginner") == 0) { return s.SolveBeginner(maxStates); }
 	if (_stricmp(mode, "simple") == 0) { return s.SolveIntermediate(maxStates); }
 	if (_stricmp(mode, "expert") == 0) { return s.SolveExpert(maxStates); }
-	return s.SolveMinimal(maxStates);
+	return numThreads > 1 ? s.SolveMinimalMultithreaded(numThreads, maxStates) : s.SolveMinimal(maxStates);
 }
 
 //Solves the already-dealt game under the requested constraint. For "stepup" it escalates
 //beginner -> simple -> expert -> unconstrained, stopping at the first mode that solves.
 //Sets usedMode to the mode that produced the returned result.
-static SolveResult SolveConstraint(Solitaire & s, int drawCount, int maxStates, const char * constraint, const char * & usedMode) {
+static SolveResult SolveConstraint(Solitaire & s, int drawCount, int maxStates, const char * constraint, int numThreads, const char * & usedMode) {
 	if (_stricmp(constraint, "stepup") == 0) {
 		static const char * ladder[] = { "beginner", "simple", "expert", "unconstrained" };
 		SolveResult result = Impossible;
 		for (int i = 0; i < 4; i++) {
-			result = RunSolve(s, drawCount, maxStates, ladder[i]);
+			result = RunSolve(s, drawCount, maxStates, ladder[i], numThreads);
 			usedMode = ladder[i];
 			if (IsSolved(result)) { return result; }
 		}
 		return result;
 	}
 	usedMode = constraint;
-	return RunSolve(s, drawCount, maxStates, constraint);
+	return RunSolve(s, drawCount, maxStates, constraint, numThreads);
 }
 
 int main(int argc, char * argv[]) {
@@ -73,7 +75,9 @@ int main(int argc, char * argv[]) {
 	int maxStates = 5000000;
 	bool showMoves = false;
 	bool replay = false;
+	int multiThreaded = 1;
 	const char * constraint = "unconstrained";
+	const char * outputFile = NULL;
 
 	for (int i = 1; i < argc; i++) {
 		if (_stricmp(argv[i], "-game") == 0 || _stricmp(argv[i], "/game") == 0 || _stricmp(argv[i], "-g") == 0 || _stricmp(argv[i], "/g") == 0) {
@@ -96,6 +100,13 @@ int main(int argc, char * argv[]) {
 			if (_stricmp(constraint, "beginner") != 0 && _stricmp(constraint, "simple") != 0 && _stricmp(constraint, "expert") != 0 && _stricmp(constraint, "stepup") != 0) {
 				cout << "Invalid constraint '" << constraint << "'. Use beginner, simple, expert, or stepup.\n"; return 0;
 			}
+		} else if (_stricmp(argv[i], "-m") == 0 || _stricmp(argv[i], "/m") == 0 || _stricmp(argv[i], "-multi") == 0 || _stricmp(argv[i], "/multi") == 0) {
+			if (i + 1 >= argc) { cout << "You must specify number of threads.\n"; return 0; }
+			multiThreaded = atoi(argv[++i]);
+			if (multiThreaded < 2 || multiThreaded > 99) { cout << "Please specify a valid number of threads from 2 to 99.\n"; return 0; }
+		} else if (_stricmp(argv[i], "-output") == 0 || _stricmp(argv[i], "/output") == 0 || _stricmp(argv[i], "-o") == 0 || _stricmp(argv[i], "/o") == 0) {
+			if (i + 1 >= argc) { cout << "You must specify an output filename.\n"; return 0; }
+			outputFile = argv[++i];
 		} else if (_stricmp(argv[i], "-mvs") == 0 || _stricmp(argv[i], "/mvs") == 0 || _stricmp(argv[i], "-moves") == 0 || _stricmp(argv[i], "/moves") == 0) {
 			showMoves = true;
 		} else if (_stricmp(argv[i], "-r") == 0 || _stricmp(argv[i], "/r") == 0) {
@@ -105,7 +116,7 @@ int main(int argc, char * argv[]) {
 			cout << "Deals a Klondike game by FreeCell (FC) game number and solves it. By default it\n";
 			cout << "runs a full exhaustive (unconstrained) search; a constraint set can be selected\n";
 			cout << "with /CONSTRAINT.\n\n";
-			cout << "SimpleSolver [/G #] [/DC #] [/S #] [/CONSTRAINT mode] [/MVS] [/R] [#]\n\n";
+			cout << "SimpleSolver [/G #] [/DC #] [/S #] [/CONSTRAINT mode] [/M #] [/OUTPUT file] [/MVS] [/R] [#]\n\n";
 			cout << "  /GAME # [/G #]    FC game number to deal and solve. Defaults to 1.\n";
 			cout << "  /TOGAME # [/TG #] Solve a range of games from /GAME to this number,\n";
 			cout << "                    printing CSV lines per deal.\n";
@@ -117,6 +128,10 @@ int main(int argc, char * argv[]) {
 			cout << "                      expert   - exhaustive search that never un-plays a foundation card.\n";
 			cout << "                      stepup   - try beginner, then simple, then expert, then unconstrained.\n";
 			cout << "                    Omit /CONSTRAINT to run the unconstrained minimal solver.\n";
+			cout << "  /MULTI # [/M #]   Use # threads (2-99) for the unconstrained minimal solve.\n";
+			cout << "                    Ignored by the constrained solvers, which are single-threaded.\n";
+			cout << "  /OUTPUT file [/O file]  Write the CSV output to file (created in the current\n";
+			cout << "                    directory) instead of stdout. Only applies in /TOGAME range mode.\n";
 			cout << "  /MOVES [/MVS]     Output the compact list of moves made when solved.\n";
 			cout << "  /R                Replay the solution step by step to output.\n";
 			cout << "  #                 A bare number is treated as the FC game number.\n";
@@ -132,17 +147,26 @@ int main(int argc, char * argv[]) {
 	//and emit one CSV line (game,moves,ms) per solved deal, like KlondikeSolver.
 	if (toGame > 0) {
 		int last = toGame < gameNumber ? gameNumber : toGame;
-		printf("game,moves,time_us,num_recycles,max_states,constraint\n");
+		//Write CSV to the file given by /OUTPUT, or to stdout when none was specified.
+		FILE * out = stdout;
+		if (outputFile != NULL) {
+			out = fopen(outputFile, "w");
+			if (out == NULL) { cout << "Could not open output file '" << outputFile << "' for writing.\n"; return 0; }
+			cout << "Writing CSV output to " << outputFile << "\n";
+		}
+		fprintf(out, "game,moves,time_us,num_recycles,max_states,constraint\n");
 		for (int deal = gameNumber; deal <= last; deal++) {
 			s.ShuffleFC(deal);
 			const char * usedMode;
 			clock_t start = clock();
-			SolveResult result = SolveConstraint(s, drawCount, maxStates, constraint, usedMode);
+			SolveResult result = SolveConstraint(s, drawCount, maxStates, constraint, multiThreaded, usedMode);
 			clock_t elapsed = clock() - start;
 			//Print a row for every deal; unsolved deals report 0 moves.
 			int moves = IsSolved(result) ? s.MovesMadeNormalizedCount() : 0;
-			printf("%d,%d,%lu,%d,%d,%s\n", deal, moves, (unsigned long)elapsed, s.RoundCount(), s.StatesUsed(), usedMode);
+			fprintf(out, "%d,%d,%lu,%d,%d,%s\n", deal, moves, (unsigned long)elapsed, s.RoundCount(), s.StatesUsed(), usedMode);
+			fflush(out);
 		}
+		if (out != stdout) { fclose(out); }
 		return 0;
 	}
 
@@ -154,7 +178,7 @@ int main(int argc, char * argv[]) {
 
 	const char * method;
 	clock_t start = clock();
-	SolveResult result = SolveConstraint(s, drawCount, maxStates, constraint, method);
+	SolveResult result = SolveConstraint(s, drawCount, maxStates, constraint, multiThreaded, method);
 	clock_t elapsed = clock() - start;
 
 	bool solved = IsSolved(result);
