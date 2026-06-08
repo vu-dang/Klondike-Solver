@@ -426,70 +426,155 @@ SolveResult Solitaire::SolveFast(int maxClosedCount, int twoShift, int threeShif
 	}
 	return maxFoundationCount == 52 ? SolvedMayNotBeMinimal : CouldNotComplete;
 }
-SolveResult Solitaire::SolveSimple(int maxMoves) {
-	//A greedy, human-like player. The defining rule of the "simple method" is that
-	//it will NOT draw from the stock while any other move is available, namely a move
-	//between tableau columns, a move to a foundation, or a move of the current draw
-	//(waste) card onto a tableau column. In this engine a draw is always coupled with
-	//the play it enables, encoded as a move with From == WASTE and Extra > 0 (the number
-	//of cards to flip from stock). Such moves are therefore only ever chosen as a last
-	//resort, once no non-draw move exists.
-	//
-	//A visited-state set guards against the greedy player cycling forever between a small
-	//set of positions. The move count is capped well under the movesMade[512] buffer.
-	if (maxMoves > 500) { maxMoves = 500; }
-
-	HashMap<int> closed(16);
-	closed.Add(GameState(), 1);
-
-	int moves = 0;
-	while (foundationCount < 52 && moves < maxMoves) {
-		UpdateAvailableMoves();
-		if (movesAvailableCount == 0) { break; }
-
-		int foundationMove = -1;	//any move onto a foundation
-		int revealMove = -1;		//a tableau move that flips a face down card
-		int otherNonDraw = -1;		//any other move that is not a stock draw
-		int drawMove = -1;			//a stock draw (From == WASTE && Extra > 0)
-		int drawExtra = 1 << 30;
-
-		for (int i = 0; i < movesAvailableCount; i++) {
-			Move m = movesAvailable[i];
-			bool isDraw = (m.From == WASTE && m.Extra > 0);
-
-			//Skip any move that would return us to an already seen position. This keeps
-			//the deterministic greedy from looping (e.g. shuffling cards between columns).
-			MakeMove(m);
-			bool visited = closed.Find(GameState()) != NULL;
-			UndoMove();
-			if (visited) { continue; }
-
-			if (isDraw) {
-				if ((int)m.Extra < drawExtra) { drawExtra = m.Extra; drawMove = i; }
-			} else if (m.To >= FOUNDATION1C) {
-				if (foundationMove == -1) { foundationMove = i; }
-			} else if (m.From != WASTE && m.Extra > 0) {
-				if (revealMove == -1) { revealMove = i; }
-			} else if (otherNonDraw == -1) {
-				otherNonDraw = i;
-			}
-		}
-
-		int chosen = -1;
-		if (foundationMove != -1) { chosen = foundationMove; }
-		else if (revealMove != -1) { chosen = revealMove; }
-		else if (otherNonDraw != -1) { chosen = otherNonDraw; }
-		else if (drawMove != -1) { chosen = drawMove; }
-
-		//No move advances to a new position: the simple method is stuck on this deal.
-		if (chosen == -1) { break; }
-
-		MakeMove(movesAvailable[chosen]);
-		closed.Add(GameState(), 1);
-		moves++;
+void Solitaire::FilterSimpleMoves() {
+	//The "simple method" is allowed to draw from the stock only when no other move
+	//exists. A draw is encoded as a talon move with From == WASTE and Extra > 0 (the
+	//number of cards that must be flipped from the stock to expose the played card).
+	//Playing a card that is already on top of the waste (Extra == 0), any tableau move,
+	//and any move to a foundation are NOT draws. So whenever at least one non-draw move
+	//is available we strip every draw move from the branch set; the search then explores
+	//all of the remaining branches exactly as the exhaustive solver would.
+	int nonDraw = 0;
+	for (int i = 0; i < movesAvailableCount; i++) {
+		Move m = movesAvailable[i];
+		if (!(m.From == WASTE && m.Extra > 0)) { nonDraw++; }
 	}
 
-	return foundationCount == 52 ? SolvedMayNotBeMinimal : CouldNotComplete;
+	if (nonDraw == 0 || nonDraw == movesAvailableCount) { return; }
+
+	int write = 0;
+	for (int i = 0; i < movesAvailableCount; i++) {
+		Move m = movesAvailable[i];
+		if (!(m.From == WASTE && m.Extra > 0)) { movesAvailable[write++] = m; }
+	}
+	movesAvailableCount = write;
+}
+SolveResult Solitaire::SolveSimple(int maxClosedCount) {
+	//Exhaustive best-first search, identical to SolveMinimal except that the set of
+	//branches explored at each state is first passed through FilterSimpleMoves: drawing
+	//from the stock is forbidden while any other move is available. The result is the
+	//minimal length solution that obeys that constraint, or Impossible if the constraint
+	//makes the deal unwinnable.
+	UpdateAvailableMoves();
+	FilterSimpleMoves();
+	while (movesAvailableCount == 1) {
+		MakeMove(movesAvailable[0]);
+		UpdateAvailableMoves();
+		FilterSimpleMoves();
+	}
+	if (movesAvailableCount == 0) { return foundationCount == 52 ? SolvedMinimal : Impossible; }
+
+	int openCount = 1;
+	int maxFoundationCount = foundationCount;
+	int bestSolutionMoveCount = 512;
+	int totalOpenCount = 1;
+
+	int powerOf2 = 1;
+	while (maxClosedCount > (1 << (powerOf2 + 2))) {
+		powerOf2++;
+	}
+	HashMap<int> closed(powerOf2);
+	stack<shared_ptr<MoveNode>> open[512];
+	Move movesToMake[512];
+	Move bestSolution[512];
+	bestSolution[0].Count = 255;
+	int startMoves = MinimumMovesLeft() + MovesMadeNormalizedCount();
+
+	shared_ptr<MoveNode> firstNode = movesMadeCount > 0 ? make_shared<MoveNode>(movesMade[movesMadeCount - 1]) : NULL;
+	shared_ptr<MoveNode> node = firstNode;
+	for (int i = movesMadeCount - 2; i >= 0; i--) {
+		node->Parent = make_shared<MoveNode>(movesMade[i]);
+		node = node->Parent;
+	}
+	open[startMoves].push(firstNode);
+	while (closed.Size() < maxClosedCount) {
+		//Check for lowest score length
+		int index = startMoves;
+		while (index < 512 && open[index].size() == 0) { index++; }
+
+		//End solver if no more states
+		if (index >= 512) { break; }
+
+		//Get next state to evaluate
+		openCount--;
+		firstNode = open[index].top();
+		open[index].pop();
+
+		//Initialize game to the found state
+		ResetGame(drawCount);
+		int movesTotal = 0;
+		node = firstNode;
+		while (node != NULL) {
+			movesToMake[movesTotal++] = node->Value;
+			node = node->Parent;
+		}
+		while (movesTotal > 0) {
+			MakeMove(movesToMake[--movesTotal]);
+		}
+
+		//Make any forced moves (a single allowed move under the simple constraint)
+		UpdateAvailableMoves();
+		FilterSimpleMoves();
+		while (movesAvailableCount == 1) {
+			Move move = movesAvailable[0];
+			MakeMove(move);
+			firstNode = make_shared<MoveNode>(move, firstNode);
+			UpdateAvailableMoves();
+			FilterSimpleMoves();
+		}
+		movesTotal = MovesMadeNormalizedCount();
+
+		//Check for best solution to foundations
+		if (foundationCount > maxFoundationCount || (foundationCount == maxFoundationCount && bestSolutionMoveCount > movesTotal)) {
+			bestSolutionMoveCount = movesTotal;
+			maxFoundationCount = foundationCount;
+
+			//Save solution
+			for (int i = 0; i < movesMadeCount; i++) {
+				bestSolution[i] = movesMade[i];
+			}
+			bestSolution[movesMadeCount].Count = 255;
+		} else if (maxFoundationCount == 52) {
+			//Dont check state if above or equal to current best solution
+			int helper = MinimumMovesLeft();
+			helper += movesTotal;
+			if (helper >= bestSolutionMoveCount) { continue; }
+		}
+
+		//Make available moves and add them to be evaulated
+		for (int i = 0; i < movesAvailableCount; i++) {
+			Move move = movesAvailable[i];
+			int movesAdded = MovesAdded(move);
+
+			MakeMove(move);
+
+			movesAdded += movesTotal;
+			movesAdded += MinimumMovesLeft();
+			if (maxFoundationCount < 52 || movesAdded < bestSolutionMoveCount) {
+				int helper = movesAdded;
+				helper += 52 - foundationCount + roundCount;
+				HashKey key = GameState();
+				KeyValue<int> * result = closed.Add(key, movesAdded);
+				if (result == NULL || result->Value > movesAdded) {
+					node = make_shared<MoveNode>(move, firstNode);
+					if (result != NULL) { result->Value = movesAdded; }
+
+					totalOpenCount++;
+					openCount++;
+					open[helper].push(node);
+				}
+			}
+
+			UndoMove();
+		}
+	}
+
+	//Reset game to best solution found
+	ResetGame(drawCount);
+	for (int i = 0; bestSolution[i].Count < 255; i++) {
+		MakeMove(bestSolution[i]);
+	}
+	return closed.Size() >= maxClosedCount ? (maxFoundationCount == 52 ? SolvedMayNotBeMinimal : CouldNotComplete) : (maxFoundationCount == 52 ? SolvedMinimal : Impossible);
 }
 SolveResult Solitaire::SolveMinimalMultithreaded(int numThreads, int maxClosedCount) {
 	SolitaireWorker worker(*this, maxClosedCount);

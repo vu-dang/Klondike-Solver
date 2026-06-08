@@ -8,13 +8,15 @@
 using namespace std;
 
 //A variation of the Klondike solver that deals a game by its FreeCell (FC) game
-//number and plays it with a "simple method" rather than an exhaustive search.
+//number and solves it with a "simple method".
 //
-//The simple method is a greedy, human-like strategy: it never draws from the
-//stock while there is any other move available (a move between tableau columns,
-//a move to a foundation, or a move of the current draw card onto a tableau
-//column). It only flips cards from the stock once nothing else can be played.
-//Because it never backtracks it is fast but will not solve every deal.
+//The simple method is a full exhaustive search, exactly like the minimal solver,
+//with a single added rule: it is not allowed to draw from the stock while any other
+//move is available (a move between tableau columns, a move to a foundation, or a move
+//of the current draw card onto a tableau column). When one or more such moves exist
+//every one of them is still explored as its own branch; only once nothing else can be
+//played is the solver permitted to flip cards from the stock. It therefore finds the
+//minimal solution obeying that constraint, or reports the deal as impossible under it.
 
 int main(int argc, char * argv[]) {
 	Solitaire s;
@@ -22,6 +24,7 @@ int main(int argc, char * argv[]) {
 
 	int gameNumber = 1;
 	int drawCount = 1;
+	int maxStates = 5000000;
 	bool showMoves = false;
 	bool replay = false;
 
@@ -33,6 +36,10 @@ int main(int argc, char * argv[]) {
 			if (i + 1 >= argc) { cout << "You must specify draw count.\n"; return 0; }
 			drawCount = atoi(argv[++i]);
 			if (drawCount < 1 || drawCount > 12) { cout << "Please specify a valid draw count from 1 to 12.\n"; return 0; }
+		} else if (_stricmp(argv[i], "-states") == 0 || _stricmp(argv[i], "/states") == 0 || _stricmp(argv[i], "-s") == 0 || _stricmp(argv[i], "/s") == 0) {
+			if (i + 1 >= argc) { cout << "You must specify max states.\n"; return 0; }
+			maxStates = atoi(argv[++i]);
+			if (maxStates < 1) { cout << "You must specify a valid max number of states.\n"; return 0; }
 		} else if (_stricmp(argv[i], "-mvs") == 0 || _stricmp(argv[i], "/mvs") == 0 || _stricmp(argv[i], "-moves") == 0 || _stricmp(argv[i], "/moves") == 0) {
 			showMoves = true;
 		} else if (_stricmp(argv[i], "-r") == 0 || _stricmp(argv[i], "/r") == 0) {
@@ -41,9 +48,10 @@ int main(int argc, char * argv[]) {
 			cout << "SimpleSolver\n";
 			cout << "Deals a Klondike game by FreeCell (FC) game number and plays it with a\n";
 			cout << "simple greedy method that never draws from stock while another move exists.\n\n";
-			cout << "SimpleSolver [/G #] [/DC #] [/MVS] [/R] [#]\n\n";
+			cout << "SimpleSolver [/G #] [/DC #] [/S #] [/MVS] [/R] [#]\n\n";
 			cout << "  /GAME # [/G #]    FC game number to deal and solve. Defaults to 1.\n";
 			cout << "  /DRAW # [/DC #]   Draw count to use. Defaults to 1.\n";
+			cout << "  /STATES # [/S #]  Max game states to evaluate. Defaults to 5,000,000.\n";
 			cout << "  /MOVES [/MVS]     Output the compact list of moves made when solved.\n";
 			cout << "  /R                Replay the solution step by step to output.\n";
 			cout << "  #                 A bare number is treated as the FC game number.\n";
@@ -61,14 +69,18 @@ int main(int argc, char * argv[]) {
 	cout << s.GameDiagram() << "\n\n";
 
 	clock_t start = clock();
-	SolveResult result = s.SolveSimple(500);
+	SolveResult result = s.SolveSimple(maxStates);
 	clock_t elapsed = clock() - start;
 
 	bool solved = (result == SolvedMinimal || result == SolvedMayNotBeMinimal);
-	if (solved) {
-		cout << "Solved with the simple method in " << s.MovesMadeNormalizedCount() << " moves.";
+	if (result == SolvedMinimal) {
+		cout << "Solved with the simple method in " << s.MovesMadeNormalizedCount() << " moves (minimal under the no-draw constraint).";
+	} else if (result == SolvedMayNotBeMinimal) {
+		cout << "Solved with the simple method in " << s.MovesMadeNormalizedCount() << " moves (state limit hit, may not be minimal).";
+	} else if (result == Impossible) {
+		cout << "Impossible under the simple method. Best foundation count " << s.FoundationCount() << "/52.";
 	} else {
-		cout << "Not solved by the simple method. Best foundation count " << s.FoundationCount() << "/52 after " << s.MovesMadeNormalizedCount() << " moves.";
+		cout << "Could not complete the search (state limit hit). Best foundation count " << s.FoundationCount() << "/52.";
 	}
 	cout << " Took " << elapsed << " ms.\n";
 
