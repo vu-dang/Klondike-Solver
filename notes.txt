@@ -2,3 +2,10 @@ make
 ./KlondikeSolver /DRAW 3 /MULTI 2 /MOVES /GAME 3
 ./KlondikeSolver /DRAW 3 /MULTI 2 
 ./KlondikeSolver /DRAW 3 /MULTI 2 > results.csv
+
+
+./SimpleSolver -game 201601 -togame 300000  -draw 3 -multi 4 -constraint stepup -output all_games-300000.csv                   
+
+./SimpleSolver -game 300001 -togame 400000  -draw 3 -multi 4 -constraint stepup -output all_games-400000.csv                   
+
+./SimpleSolver -game 400001 -togame 500000  -draw 3 -multi 4 -constraint stepup -output all_games-500000.csv                   
