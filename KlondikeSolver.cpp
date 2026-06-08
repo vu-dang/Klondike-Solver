@@ -54,6 +54,12 @@ int main(int argc, char * argv[]) {
 			if (drawCount < 1 || drawCount > 12) { cout << "Please specify a valid draw count from 1 to 12."; return 0; }
 			s.SetDrawCount(drawCount);
 			i++;
+		} else if (_stricmp(argv[i], "-recycle") == 0 || _stricmp(argv[i], "/recycle") == 0 || _stricmp(argv[i], "-rc") == 0 || _stricmp(argv[i], "/rc") == 0) {
+			if (i + 1 >= argc) { cout << "You must specify the maximum number of stock recycles allowed."; return 0; }
+			int maxRounds = atoi(argv[i + 1]);
+			if (maxRounds < 0) { cout << "Please specify a non-negative number of stock recycles."; return 0; }
+			s.SetMaxRounds(maxRounds);
+			i++;
 		} else if (_stricmp(argv[i], "-deck") == 0 || _stricmp(argv[i], "/deck") == 0 || _stricmp(argv[i], "-d") == 0 || _stricmp(argv[i], "/d") == 0) {
 			if (i + 1 >= argc) { cout << "You must specify deck to load."; return 0; }
 			if (commandLoaded) { cout << "Only one method can be specified (deck/game/file)."; return 0; }
@@ -92,8 +98,10 @@ int main(int argc, char * argv[]) {
 			replay = true;
 		} else if (_stricmp(argv[i], "-?") == 0 || _stricmp(argv[i], "/?") == 0 || _stricmp(argv[i], "?") == 0 || _stricmp(argv[i], "/help") == 0 || _stricmp(argv[i], "-help") == 0) {
 			cout << "Klondike Solver V2.0\nSolves games of Klondike (Patience) solitaire minimally or a faster best try.\n\n";
-			cout << "KlondikeSolver [/DC] [/D] [/G] [/O] [/M] [/S] [/F] [/R] [/MVS] [Path]\n\n";
+			cout << "KlondikeSolver [/DC] [/RC] [/D] [/G] [/O] [/M] [/S] [/F] [/R] [/MVS] [Path]\n\n";
 			cout << "  /DRAW # [/DC #]       Sets the draw count to use when solving. Defaults to 1.\n\n";
+			cout << "  /RECYCLE # [/RC #]    Sets the max number of times the stock may be recycled\n";
+			cout << "                        (waste turned back into stock). Defaults to unlimited.\n\n";
 			cout << "  /DECK str [/D str]    Loads the deck specified by the string.\n\n";
 			cout << "  /GAME # [/G #]        Loads a random game with seed #.\n\n";
 			cout << "  Path                  Solves deals specified in the file.\n\n";

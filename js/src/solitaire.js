@@ -49,6 +49,7 @@ export class Solitaire {
 		for (let i = 0; i < 32; i++) this.movesAvailable[i] = new Move();
 		this.random = new Random();
 		this.drawCount = 1;
+		this.maxRounds = -1;
 		this.roundCount = 0;
 		this.foundationCount = 0;
 		this.movesAvailableCount = 0;
@@ -57,6 +58,7 @@ export class Solitaire {
 
 	initialize() {
 		this.drawCount = 1;
+		this.maxRounds = -1;
 		for (let i = 0; i < 52; i++) this.cards[i].set(i);
 		for (let i = 0; i < 13; i++) this.piles[i].initialize();
 	}
@@ -67,6 +69,14 @@ export class Solitaire {
 
 	drawCountValue() {
 		return this.drawCount;
+	}
+
+	setMaxRounds(maxRounds) {
+		this.maxRounds = maxRounds;
+	}
+
+	maxRoundsValue() {
+		return this.maxRounds;
 	}
 
 	movesAvailableCountValue() {
@@ -227,25 +237,29 @@ export class Solitaire {
 			}
 		}
 
-		let amountToDraw = stockSize + stockSize + wasteSize + 1;
-		const wasteEnd = wasteSize - 1;
+		// Cards reached by recycling the waste back into the stock require an additional round.
+		// Only generate these moves when we are still allowed to recycle (maxRounds < 0 means unlimited).
+		if (this.maxRounds < 0 || this.roundCount < this.maxRounds) {
+			let amountToDraw = stockSize + stockSize + wasteSize + 1;
+			const wasteEnd = wasteSize - 1;
 
-		let lastIndex = this.drawCount - 1;
-		while (lastIndex < wasteEnd) {
-			talon[index] = waste.getUp(lastIndex);
-			talonMoves[index++] = amountToDraw + lastIndex;
-			lastIndex += this.drawCount;
-		}
+			let lastIndex = this.drawCount - 1;
+			while (lastIndex < wasteEnd) {
+				talon[index] = waste.getUp(lastIndex);
+				talonMoves[index++] = amountToDraw + lastIndex;
+				lastIndex += this.drawCount;
+			}
 
-		if (lastIndex > wasteEnd && wasteEnd > -1) {
-			amountToDraw += wasteEnd + stockSize;
-			const startJ2 =
-				stockSize > 0 && stockSize - lastIndex + wasteEnd <= 0
-					? 0
-					: stockSize - lastIndex + wasteEnd;
-			for (let j = startJ2; j > 0; j -= this.drawCount) {
-				talon[index] = stock.getUp(j);
-				talonMoves[index++] = amountToDraw - j;
+			if (lastIndex > wasteEnd && wasteEnd > -1) {
+				amountToDraw += wasteEnd + stockSize;
+				const startJ2 =
+					stockSize > 0 && stockSize - lastIndex + wasteEnd <= 0
+						? 0
+						: stockSize - lastIndex + wasteEnd;
+				for (let j = startJ2; j > 0; j -= this.drawCount) {
+					talon[index] = stock.getUp(j);
+					talonMoves[index++] = amountToDraw - j;
+				}
 			}
 		}
 

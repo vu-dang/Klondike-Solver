@@ -565,27 +565,31 @@ int Solitaire::GetTalonCards(Card talon[], int talonMoves[]) {
 		if (j > 0 && j < drawCount) { j = drawCount; }
 	}
 
-	//Check cards already turned over in the waste, meaning we have to "redeal" the deck to get to it
-	int amountToDraw = stockSize;
-	amountToDraw += stockSize;
-	amountToDraw += wasteSize;
-	amountToDraw++;
-	wasteSize--;
-
-	int lastIndex = drawCount - 1;
-	while (lastIndex < wasteSize) {
-		talon[index] = waste.Up(lastIndex);
-		talonMoves[index++] = amountToDraw + lastIndex;
-		lastIndex += drawCount;
-	}
-
-	//Check cards in stock after a "redeal". Only happens when draw count > 1 and you have access to more cards in the talon
-	if (lastIndex > wasteSize && wasteSize > -1) {
-		amountToDraw += wasteSize;
+	//Cards reached by recycling the waste back into the stock require an additional round.
+	//Only generate these moves when we are still allowed to recycle (maxRounds < 0 means unlimited).
+	if (maxRounds < 0 || roundCount < maxRounds) {
+		//Check cards already turned over in the waste, meaning we have to "redeal" the deck to get to it
+		int amountToDraw = stockSize;
 		amountToDraw += stockSize;
-		for (int j = (stockSize > 0 && stockSize - lastIndex + wasteSize <= 0) ? 0 : stockSize - lastIndex + wasteSize; j > 0; j -= drawCount) {
-			talon[index] = stock.Up(j);
-			talonMoves[index++] = amountToDraw - j;
+		amountToDraw += wasteSize;
+		amountToDraw++;
+		wasteSize--;
+
+		int lastIndex = drawCount - 1;
+		while (lastIndex < wasteSize) {
+			talon[index] = waste.Up(lastIndex);
+			talonMoves[index++] = amountToDraw + lastIndex;
+			lastIndex += drawCount;
+		}
+
+		//Check cards in stock after a "redeal". Only happens when draw count > 1 and you have access to more cards in the talon
+		if (lastIndex > wasteSize && wasteSize > -1) {
+			amountToDraw += wasteSize;
+			amountToDraw += stockSize;
+			for (int j = (stockSize > 0 && stockSize - lastIndex + wasteSize <= 0) ? 0 : stockSize - lastIndex + wasteSize; j > 0; j -= drawCount) {
+				talon[index] = stock.Up(j);
+				talonMoves[index++] = amountToDraw - j;
+			}
 		}
 	}
 
@@ -902,6 +906,7 @@ int Solitaire::MinimumMovesLeft() {
 }
 void Solitaire::Initialize() {
 	drawCount = 1;
+	maxRounds = -1;
 	for (int i = 0; i < 52; i++) {
 		cards[i].Set(i);
 	}
@@ -1116,6 +1121,12 @@ string Solitaire::GetPysol() {
 }
 void Solitaire::SetDrawCount(int drawCount) {
 	this->drawCount = drawCount;
+}
+void Solitaire::SetMaxRounds(int maxRounds) {
+	this->maxRounds = maxRounds;
+}
+int Solitaire::MaxRounds() {
+	return maxRounds;
 }
 HashKey Solitaire::GameState() {
 	int order[7] = { TABLEAU1, TABLEAU2, TABLEAU3, TABLEAU4, TABLEAU5, TABLEAU6, TABLEAU7 };

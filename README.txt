@@ -3,9 +3,11 @@ Klondike-Solver
 
 Klondike (Patience) Solver that finds minimal length solutions.
 
-KlondikeSolver [/DC] [/D] [/G] [/O] [/M] [/S] [/F] [/R] [FilePath]
+KlondikeSolver [/DC] [/RC] [/D] [/G] [/O] [/M] [/S] [/F] [/R] [FilePath]
 
 /DRAW # [/DC #] - Sets the draw count to use when solving. Defaults to 1.
+
+/RECYCLE # [/RC #] - Sets the maximum number of times the stock may be recycled (the waste pile turned back into the stock). Defaults to unlimited. Use 0 to disallow recycling entirely (a single pass through the stock), 1 for a single recycle, etc.
 
 /DECK str [/D str] - Loads the deck specified by the string.
 
