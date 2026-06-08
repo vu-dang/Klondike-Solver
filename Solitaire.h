@@ -29,9 +29,9 @@ private:
 
 	int FoundationMin();
 	int GetTalonCards(Card talon[], int talonMoves[]);
-	void FilterSimpleMoves();
-	void FilterSimplerMoves();
-	void FilterAverageMoves();
+	void FilterIntermediateMoves();
+	void FilterBeginnerMoves();
+	void FilterExpertMoves();
 public:
 	void Initialize();
 	int Shuffle1(int dealNumber = -1);
@@ -47,9 +47,9 @@ public:
 	SolveResult SolveMinimalMultithreaded(int numThreads, int maxClosedCount);
 	SolveResult SolveMinimal(int maxClosedCount);
 	SolveResult SolveFast(int maxClosedCount, int twoShift, int threeShift);
-	SolveResult SolveSimple(int maxClosedCount);
-	SolveResult SolveSimpler(int maxClosedCount);
-	SolveResult SolveAverage(int maxClosedCount);
+	SolveResult SolveIntermediate(int maxClosedCount);
+	SolveResult SolveBeginner(int maxClosedCount);
+	SolveResult SolveExpert(int maxClosedCount);
 	SolveResult SolveRandom(int numberOfTimesToPlay, int solutionsToFind);
 	int MovesAvailableCount();
 	int MovesMadeCount();

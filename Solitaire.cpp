@@ -426,8 +426,8 @@ SolveResult Solitaire::SolveFast(int maxClosedCount, int twoShift, int threeShif
 	}
 	return maxFoundationCount == 52 ? SolvedMayNotBeMinimal : CouldNotComplete;
 }
-void Solitaire::FilterSimpleMoves() {
-	//The "simple method" is allowed to draw from the stock only when no other move
+void Solitaire::FilterIntermediateMoves() {
+	//The "intermediate method" is allowed to draw from the stock only when no other move
 	//exists. A draw is encoded as a talon move with From == WASTE and Extra > 0 (the
 	//number of cards that must be flipped from the stock to expose the played card).
 	//Playing a card that is already on top of the waste (Extra == 0), any tableau move,
@@ -449,13 +449,13 @@ void Solitaire::FilterSimpleMoves() {
 	}
 	movesAvailableCount = write;
 }
-void Solitaire::FilterSimplerMoves() {
-	//The "simpler method" adds a second pruning rule on top of the simple method. First
-	//it applies the same rule: no drawing from the stock while any card move is available.
-	//Then, if any move onto a foundation is available, it prunes every non foundation move
-	//so that only the foundation moves are explored. As with the simple method all of the
-	//surviving branches are still searched exhaustively.
-	FilterSimpleMoves();
+void Solitaire::FilterBeginnerMoves() {
+	//The "beginner method" adds a second pruning rule on top of the intermediate method.
+	//First it applies the same rule: no drawing from the stock while any card move is
+	//available. Then, if any move onto a foundation is available, it prunes every non
+	//foundation move so that only the foundation moves are explored. As with the
+	//intermediate method all of the surviving branches are still searched exhaustively.
+	FilterIntermediateMoves();
 
 	int foundationMoves = 0;
 	for (int i = 0; i < movesAvailableCount; i++) {
@@ -470,8 +470,8 @@ void Solitaire::FilterSimplerMoves() {
 	}
 	movesAvailableCount = write;
 }
-void Solitaire::FilterAverageMoves() {
-	//The "average" method runs the full exhaustive search (drawing from the stock is
+void Solitaire::FilterExpertMoves() {
+	//The "expert" method runs the full exhaustive search (drawing from the stock is
 	//unrestricted) but never considers taking a card back off a foundation, i.e. any move
 	//whose source is a foundation pile. Every other branch is explored just as the minimal
 	//solver would. Those foundation to tableau moves are rarely needed to solve optimally,
@@ -490,20 +490,20 @@ void Solitaire::FilterAverageMoves() {
 	}
 	movesAvailableCount = write;
 }
-SolveResult Solitaire::SolveSimple(int maxClosedCount) {
+SolveResult Solitaire::SolveIntermediate(int maxClosedCount) {
 	//Exhaustive best-first search, identical to SolveMinimal except that the set of
-	//branches explored at each state is first passed through FilterSimpleMoves: drawing
+	//branches explored at each state is first passed through FilterIntermediateMoves: drawing
 	//from the stock is forbidden while any other move is available. The result is the
 	//minimal length solution that obeys that constraint, or Impossible if the constraint
 	//makes the deal unwinnable.
 	UpdateAvailableMoves();
-	FilterSimpleMoves();
+	FilterIntermediateMoves();
 	//A constrained game can present a chain of forced single moves; the movesMadeCount
 	//guard keeps such a chain (or a forced cycle) from overrunning the movesMade buffer.
 	while (movesAvailableCount == 1 && movesMadeCount < 480) {
 		MakeMove(movesAvailable[0]);
 		UpdateAvailableMoves();
-		FilterSimpleMoves();
+		FilterIntermediateMoves();
 	}
 	if (movesAvailableCount == 0) { return foundationCount == 52 ? SolvedMinimal : Impossible; }
 
@@ -555,15 +555,15 @@ SolveResult Solitaire::SolveSimple(int maxClosedCount) {
 			MakeMove(movesToMake[--movesTotal]);
 		}
 
-		//Make any forced moves (a single allowed move under the simple constraint)
+		//Make any forced moves (a single allowed move under the intermediate constraint)
 		UpdateAvailableMoves();
-		FilterSimpleMoves();
+		FilterIntermediateMoves();
 		while (movesAvailableCount == 1 && movesMadeCount < 480) {
 			Move move = movesAvailable[0];
 			MakeMove(move);
 			firstNode = make_shared<MoveNode>(move, firstNode);
 			UpdateAvailableMoves();
-			FilterSimpleMoves();
+			FilterIntermediateMoves();
 		}
 		movesTotal = MovesMadeNormalizedCount();
 		//Abandon any branch that has grown pathologically deep (e.g. a forced cycle the
@@ -622,19 +622,19 @@ SolveResult Solitaire::SolveSimple(int maxClosedCount) {
 	}
 	return closed.Size() >= maxClosedCount ? (maxFoundationCount == 52 ? SolvedMayNotBeMinimal : CouldNotComplete) : (maxFoundationCount == 52 ? SolvedMinimal : Impossible);
 }
-SolveResult Solitaire::SolveSimpler(int maxClosedCount) {
-	//Exhaustive best-first search identical to SolveSimple, but the branch set at each
-	//state is passed through FilterSimplerMoves instead: drawing is forbidden while a card
+SolveResult Solitaire::SolveBeginner(int maxClosedCount) {
+	//Exhaustive best-first search identical to SolveIntermediate, but the branch set at each
+	//state is passed through FilterBeginnerMoves instead: drawing is forbidden while a card
 	//move exists, and when any foundation move is available only foundation moves are
 	//explored. Returns the minimal solution obeying both constraints, or Impossible.
 	UpdateAvailableMoves();
-	FilterSimplerMoves();
+	FilterBeginnerMoves();
 	//A constrained game can present a chain of forced single moves; the movesMadeCount
 	//guard keeps such a chain (or a forced cycle) from overrunning the movesMade buffer.
 	while (movesAvailableCount == 1 && movesMadeCount < 480) {
 		MakeMove(movesAvailable[0]);
 		UpdateAvailableMoves();
-		FilterSimplerMoves();
+		FilterBeginnerMoves();
 	}
 	if (movesAvailableCount == 0) { return foundationCount == 52 ? SolvedMinimal : Impossible; }
 
@@ -686,15 +686,15 @@ SolveResult Solitaire::SolveSimpler(int maxClosedCount) {
 			MakeMove(movesToMake[--movesTotal]);
 		}
 
-		//Make any forced moves (a single allowed move under the simpler constraint)
+		//Make any forced moves (a single allowed move under the beginner constraint)
 		UpdateAvailableMoves();
-		FilterSimplerMoves();
+		FilterBeginnerMoves();
 		while (movesAvailableCount == 1 && movesMadeCount < 480) {
 			Move move = movesAvailable[0];
 			MakeMove(move);
 			firstNode = make_shared<MoveNode>(move, firstNode);
 			UpdateAvailableMoves();
-			FilterSimplerMoves();
+			FilterBeginnerMoves();
 		}
 		movesTotal = MovesMadeNormalizedCount();
 		//Abandon any branch that has grown pathologically deep (e.g. a forced cycle the
@@ -753,17 +753,17 @@ SolveResult Solitaire::SolveSimpler(int maxClosedCount) {
 	}
 	return closed.Size() >= maxClosedCount ? (maxFoundationCount == 52 ? SolvedMayNotBeMinimal : CouldNotComplete) : (maxFoundationCount == 52 ? SolvedMinimal : Impossible);
 }
-SolveResult Solitaire::SolveAverage(int maxClosedCount) {
+SolveResult Solitaire::SolveExpert(int maxClosedCount) {
 	//Exhaustive best-first search identical to SolveMinimal, but the branch set at each
-	//state is passed through FilterAverageMoves: moves that take a card back off a
+	//state is passed through FilterExpertMoves: moves that take a card back off a
 	//foundation are never considered. Drawing from the stock is unrestricted. Returns the
 	//minimal solution that never un-plays a foundation card, or Impossible if none exists.
 	UpdateAvailableMoves();
-	FilterAverageMoves();
+	FilterExpertMoves();
 	while (movesAvailableCount == 1 && movesMadeCount < 480) {
 		MakeMove(movesAvailable[0]);
 		UpdateAvailableMoves();
-		FilterAverageMoves();
+		FilterExpertMoves();
 	}
 	if (movesAvailableCount == 0) { return foundationCount == 52 ? SolvedMinimal : Impossible; }
 
@@ -815,15 +815,15 @@ SolveResult Solitaire::SolveAverage(int maxClosedCount) {
 			MakeMove(movesToMake[--movesTotal]);
 		}
 
-		//Make any forced moves (a single allowed move under the average constraint)
+		//Make any forced moves (a single allowed move under the expert constraint)
 		UpdateAvailableMoves();
-		FilterAverageMoves();
+		FilterExpertMoves();
 		while (movesAvailableCount == 1 && movesMadeCount < 480) {
 			Move move = movesAvailable[0];
 			MakeMove(move);
 			firstNode = make_shared<MoveNode>(move, firstNode);
 			UpdateAvailableMoves();
-			FilterAverageMoves();
+			FilterExpertMoves();
 		}
 		movesTotal = MovesMadeNormalizedCount();
 		//Abandon any branch that has grown pathologically deep so the move buffers and
