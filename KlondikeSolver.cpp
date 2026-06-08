@@ -46,6 +46,7 @@ int main(int argc, char * argv[]) {
 	bool replay = false;
 	bool showMoves = false;
 	int gameNumber = 1;
+	int toGame = 0;
 
 	for (int i = 1; i < argc; i++) {
 		if (_stricmp(argv[i], "-draw") == 0 || _stricmp(argv[i], "/draw") == 0 || _stricmp(argv[i], "-dc") == 0 || _stricmp(argv[i], "/dc") == 0) {
@@ -73,6 +74,10 @@ int main(int argc, char * argv[]) {
 			//s.Shuffle1(atoi(argv[i + 1]));
 			//s.ShuffleFC(atoi(argv[i + 1]));
 			gameNumber = atoi(argv[i + 1]);
+			i++;
+		} else if (_stricmp(argv[i], "-togame") == 0 || _stricmp(argv[i], "/togame") == 0 || _stricmp(argv[i], "-tg") == 0 || _stricmp(argv[i], "/tg") == 0) {
+			if (i + 1 >= argc) { cout << "You must specify a game number to solve up to."; return 0; }
+			toGame = atoi(argv[i + 1]);
 			i++;
 		} else if (_stricmp(argv[i], "-out") == 0 || _stricmp(argv[i], "/out") == 0 || _stricmp(argv[i], "-o") == 0 || _stricmp(argv[i], "/o") == 0) {
 			if (i + 1 >= argc) { cout << "You must specify a valid output method. 0 or 1."; return 0; }
@@ -104,6 +109,8 @@ int main(int argc, char * argv[]) {
 			cout << "                        (waste turned back into stock). Defaults to unlimited.\n\n";
 			cout << "  /DECK str [/D str]    Loads the deck specified by the string.\n\n";
 			cout << "  /GAME # [/G #]        Loads a random game with seed #.\n\n";
+			cout << "  /TOGAME # [/TG #]     Solves a range of games from /GAME up to and including #.\n";
+			cout << "                        Defaults to /GAME (a single deal).\n\n";
 			cout << "  Path                  Solves deals specified in the file.\n\n";
 			cout << "  /R                    Replays solution to output if one is found.\n\n";
 			cout << "  /MULTI # [/M #]       Uses # threads to solve deals.\n";
@@ -132,20 +139,28 @@ int main(int argc, char * argv[]) {
 
 	if (maxClosedCount == 0) { maxClosedCount = 5000000; }
 
+	//Loop mode is driven by /TOGAME: when supplied we sweep gameNumber..toGame and
+	//emit CSV. Without it we solve the single deal with full diagram output. /MOVES
+	//independently controls whether the compact move list is printed in single mode.
+	bool loopMode = toGame > 0;
+	if (toGame < gameNumber) { toGame = gameNumber; }
+
+	if (loopMode) { printf("game,moves,time_us,num_recycles,max_states\n"); }
+
 	unsigned int fileIndex = 0;
-	for (int deal = gameNumber; deal < 10000; deal ++) {
+	for (int deal = gameNumber; deal <= toGame; deal ++) {
 
 		s.ShuffleFC(deal);
-		if (showMoves) {
+		if (!loopMode) {
 			string diagram = s.GameDiagram();
 			cout << diagram;
-		} 
+		}
 
 		s.ResetGame();
-		if (showMoves) {
+		if (!loopMode) {
 			string diagram = s.GameDiagram();
 			cout << diagram;
-		} 
+		}
 
 /*
 		if (outputMethod == 0) {
@@ -191,10 +206,11 @@ int main(int argc, char * argv[]) {
 
 		bool canReplay = false;
 
-		if (!showMoves) {
-			if (result == SolvedMinimal) {
-				printf("%d,%d,%lu\n",deal,s.MovesMadeNormalizedCount(),(clock() - total));
-			}
+		if (loopMode) {
+			//Print a row for every deal; unsolved deals report 0 moves.
+			bool solved = (result == SolvedMinimal || result == SolvedMayNotBeMinimal);
+			int moves = solved ? s.MovesMadeNormalizedCount() : 0;
+			printf("%d,%d,%lu,%d,%d\n",deal,moves,(clock() - total),s.RoundCount(),s.StatesUsed());
 		} else {
 			printf("%d\n",deal);							
 			string diagram = s.GameDiagram();

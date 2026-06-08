@@ -117,6 +117,7 @@ void SolitaireWorker::RunMinimalWorker(void * closedPointer) {
 	}
 }
 SolveResult SolitaireWorker::Run(int numThreads) {
+	solitaire->statesUsed = 0;
 	solitaire->MakeAutoMoves();
 	if (solitaire->MovesAvailableCount() == 0) { return solitaire->FoundationCount() == 52 ? SolvedMinimal : Impossible; }
 
@@ -156,6 +157,7 @@ SolveResult SolitaireWorker::Run(int numThreads) {
 		solitaire->MakeMove(bestSolution[i]);
 	}
 
+	solitaire->statesUsed = closed->Size();
 	SolveResult result = closed->Size() >= maxClosedCount ? (maxFoundationCount == 52 ? SolvedMayNotBeMinimal : CouldNotComplete) : (maxFoundationCount == 52 ? SolvedMinimal : Impossible);
 	delete closed;
 	return result;
@@ -163,7 +165,7 @@ SolveResult SolitaireWorker::Run(int numThreads) {
 
 SolveResult Solitaire::SolveRandom(int numberOfTimesToPlay, int solutionsToFind) {
 	MakeAutoMoves();
-	if (movesAvailableCount == 0) { return foundationCount == 52 ? SolvedMinimal : Impossible; }
+	if (movesAvailableCount == 0) { statesUsed = 0; return foundationCount == 52 ? SolvedMinimal : Impossible; }
 
 	Move bestSolution[512];
 	bestSolution[0].Count = 255;
@@ -239,7 +241,7 @@ SolveResult Solitaire::SolveRandom(int numberOfTimesToPlay, int solutionsToFind)
 }
 SolveResult Solitaire::SolveFast(int maxClosedCount, int twoShift, int threeShift) {
 	MakeAutoMoves();
-	if (movesAvailableCount == 0) { return foundationCount == 52 ? SolvedMinimal : Impossible; }
+	if (movesAvailableCount == 0) { statesUsed = 0; return foundationCount == 52 ? SolvedMinimal : Impossible; }
 
 	int openCount = 1;
 	int maxFoundationCount = foundationCount;
@@ -424,6 +426,7 @@ SolveResult Solitaire::SolveFast(int maxClosedCount, int twoShift, int threeShif
 	for (int i = 0; bestSolution[i].Count < 255; i++) {
 		MakeMove(bestSolution[i]);
 	}
+	statesUsed = closed.Size();
 	return maxFoundationCount == 52 ? SolvedMayNotBeMinimal : CouldNotComplete;
 }
 void Solitaire::FilterIntermediateMoves() {
@@ -505,7 +508,7 @@ SolveResult Solitaire::SolveIntermediate(int maxClosedCount) {
 		UpdateAvailableMoves();
 		FilterIntermediateMoves();
 	}
-	if (movesAvailableCount == 0) { return foundationCount == 52 ? SolvedMinimal : Impossible; }
+	if (movesAvailableCount == 0) { statesUsed = 0; return foundationCount == 52 ? SolvedMinimal : Impossible; }
 
 	int openCount = 1;
 	int maxFoundationCount = foundationCount;
@@ -620,7 +623,8 @@ SolveResult Solitaire::SolveIntermediate(int maxClosedCount) {
 	for (int i = 0; bestSolution[i].Count < 255; i++) {
 		MakeMove(bestSolution[i]);
 	}
-	return closed.Size() >= maxClosedCount ? (maxFoundationCount == 52 ? SolvedMayNotBeMinimal : CouldNotComplete) : (maxFoundationCount == 52 ? SolvedMinimal : Impossible);
+	statesUsed = closed.Size();
+	return statesUsed >= maxClosedCount ? (maxFoundationCount == 52 ? SolvedMayNotBeMinimal : CouldNotComplete) : (maxFoundationCount == 52 ? SolvedMinimal : Impossible);
 }
 SolveResult Solitaire::SolveBeginner(int maxClosedCount) {
 	//Exhaustive best-first search identical to SolveIntermediate, but the branch set at each
@@ -636,7 +640,7 @@ SolveResult Solitaire::SolveBeginner(int maxClosedCount) {
 		UpdateAvailableMoves();
 		FilterBeginnerMoves();
 	}
-	if (movesAvailableCount == 0) { return foundationCount == 52 ? SolvedMinimal : Impossible; }
+	if (movesAvailableCount == 0) { statesUsed = 0; return foundationCount == 52 ? SolvedMinimal : Impossible; }
 
 	int openCount = 1;
 	int maxFoundationCount = foundationCount;
@@ -751,7 +755,8 @@ SolveResult Solitaire::SolveBeginner(int maxClosedCount) {
 	for (int i = 0; bestSolution[i].Count < 255; i++) {
 		MakeMove(bestSolution[i]);
 	}
-	return closed.Size() >= maxClosedCount ? (maxFoundationCount == 52 ? SolvedMayNotBeMinimal : CouldNotComplete) : (maxFoundationCount == 52 ? SolvedMinimal : Impossible);
+	statesUsed = closed.Size();
+	return statesUsed >= maxClosedCount ? (maxFoundationCount == 52 ? SolvedMayNotBeMinimal : CouldNotComplete) : (maxFoundationCount == 52 ? SolvedMinimal : Impossible);
 }
 SolveResult Solitaire::SolveExpert(int maxClosedCount) {
 	//Exhaustive best-first search identical to SolveMinimal, but the branch set at each
@@ -765,7 +770,7 @@ SolveResult Solitaire::SolveExpert(int maxClosedCount) {
 		UpdateAvailableMoves();
 		FilterExpertMoves();
 	}
-	if (movesAvailableCount == 0) { return foundationCount == 52 ? SolvedMinimal : Impossible; }
+	if (movesAvailableCount == 0) { statesUsed = 0; return foundationCount == 52 ? SolvedMinimal : Impossible; }
 
 	int openCount = 1;
 	int maxFoundationCount = foundationCount;
@@ -880,7 +885,8 @@ SolveResult Solitaire::SolveExpert(int maxClosedCount) {
 	for (int i = 0; bestSolution[i].Count < 255; i++) {
 		MakeMove(bestSolution[i]);
 	}
-	return closed.Size() >= maxClosedCount ? (maxFoundationCount == 52 ? SolvedMayNotBeMinimal : CouldNotComplete) : (maxFoundationCount == 52 ? SolvedMinimal : Impossible);
+	statesUsed = closed.Size();
+	return statesUsed >= maxClosedCount ? (maxFoundationCount == 52 ? SolvedMayNotBeMinimal : CouldNotComplete) : (maxFoundationCount == 52 ? SolvedMinimal : Impossible);
 }
 SolveResult Solitaire::SolveMinimalMultithreaded(int numThreads, int maxClosedCount) {
 	SolitaireWorker worker(*this, maxClosedCount);
@@ -888,7 +894,7 @@ SolveResult Solitaire::SolveMinimalMultithreaded(int numThreads, int maxClosedCo
 }
 SolveResult Solitaire::SolveMinimal(int maxClosedCount) {
 	MakeAutoMoves();
-	if (movesAvailableCount == 0) { return foundationCount == 52 ? SolvedMinimal : Impossible; }
+	if (movesAvailableCount == 0) { statesUsed = 0; return foundationCount == 52 ? SolvedMinimal : Impossible; }
 
 	int openCount = 1;
 	int maxFoundationCount = foundationCount;
@@ -998,7 +1004,8 @@ SolveResult Solitaire::SolveMinimal(int maxClosedCount) {
 	for (int i = 0; bestSolution[i].Count < 255; i++) {
 		MakeMove(bestSolution[i]);
 	}
-	return closed.Size() >= maxClosedCount ? (maxFoundationCount == 52 ? SolvedMayNotBeMinimal : CouldNotComplete) : (maxFoundationCount == 52 ? SolvedMinimal : Impossible);
+	statesUsed = closed.Size();
+	return statesUsed >= maxClosedCount ? (maxFoundationCount == 52 ? SolvedMayNotBeMinimal : CouldNotComplete) : (maxFoundationCount == 52 ? SolvedMinimal : Impossible);
 }
 int Solitaire::GetTalonCards(Card talon[], int talonMoves[]) {
 	int index = 0;
@@ -1887,6 +1894,9 @@ int Solitaire::FoundationCount() {
 }
 int Solitaire::RoundCount() {
 	return roundCount;
+}
+int Solitaire::StatesUsed() {
+	return statesUsed;
 }
 int Solitaire::DrawCount() {
 	return drawCount;

@@ -31,6 +31,7 @@ int main(int argc, char * argv[]) {
 	s.Initialize();
 
 	int gameNumber = 1;
+	int toGame = 0;
 	int drawCount = 1;
 	int maxStates = 5000000;
 	bool showMoves = false;
@@ -42,6 +43,9 @@ int main(int argc, char * argv[]) {
 		if (_stricmp(argv[i], "-game") == 0 || _stricmp(argv[i], "/game") == 0 || _stricmp(argv[i], "-g") == 0 || _stricmp(argv[i], "/g") == 0) {
 			if (i + 1 >= argc) { cout << "You must specify an FC game number to load.\n"; return 0; }
 			gameNumber = atoi(argv[++i]);
+		} else if (_stricmp(argv[i], "-togame") == 0 || _stricmp(argv[i], "/togame") == 0 || _stricmp(argv[i], "-tg") == 0 || _stricmp(argv[i], "/tg") == 0) {
+			if (i + 1 >= argc) { cout << "You must specify an FC game number to solve up to.\n"; return 0; }
+			toGame = atoi(argv[++i]);
 		} else if (_stricmp(argv[i], "-draw") == 0 || _stricmp(argv[i], "/draw") == 0 || _stricmp(argv[i], "-dc") == 0 || _stricmp(argv[i], "/dc") == 0) {
 			if (i + 1 >= argc) { cout << "You must specify draw count.\n"; return 0; }
 			drawCount = atoi(argv[++i]);
@@ -65,6 +69,8 @@ int main(int argc, char * argv[]) {
 			cout << "draws from stock while another move exists.\n\n";
 			cout << "SimpleSolver [/G #] [/DC #] [/S #] [/BEGINNER] [/EXPERT] [/MVS] [/R] [#]\n\n";
 			cout << "  /GAME # [/G #]    FC game number to deal and solve. Defaults to 1.\n";
+		cout << "  /TOGAME # [/TG #] Solve a range of games from /GAME to this number,\n";
+		cout << "                    printing CSV lines (game,moves,ms) for each solved deal.\n";
 			cout << "  /DRAW # [/DC #]   Draw count to use. Defaults to 1.\n";
 			cout << "  /STATES # [/S #]  Max game states to evaluate. Defaults to 5,000,000.\n";
 			cout << "  /BEGINNER         Intermediate rule, plus explore only foundation moves when any exist.\n";
@@ -79,6 +85,26 @@ int main(int argc, char * argv[]) {
 	}
 
 	s.SetDrawCount(drawCount);
+
+	//Range mode: when /TOGAME is given, solve every deal from gameNumber to toGame
+	//and emit one CSV line (game,moves,ms) per solved deal, like KlondikeSolver.
+	if (toGame > 0) {
+		int last = toGame < gameNumber ? gameNumber : toGame;
+		printf("game,moves,time_us,num_recycles,max_states\n");
+		for (int deal = gameNumber; deal <= last; deal++) {
+			s.ShuffleFC(deal);
+			s.ResetGame(drawCount);
+			clock_t start = clock();
+			SolveResult result = expert ? s.SolveExpert(maxStates) : (beginner ? s.SolveBeginner(maxStates) : s.SolveIntermediate(maxStates));
+			clock_t elapsed = clock() - start;
+			//Print a row for every deal; unsolved deals report 0 moves.
+			bool solved = (result == SolvedMinimal || result == SolvedMayNotBeMinimal);
+			int moves = solved ? s.MovesMadeNormalizedCount() : 0;
+			printf("%d,%d,%lu,%d,%d\n", deal, moves, (unsigned long)elapsed, s.RoundCount(), s.StatesUsed());
+		}
+		return 0;
+	}
+
 	s.ShuffleFC(gameNumber);
 	s.ResetGame(drawCount);
 

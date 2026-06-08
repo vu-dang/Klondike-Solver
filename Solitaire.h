@@ -19,6 +19,7 @@ enum SolveResult {
 };
 
 class Solitaire {
+	friend class SolitaireWorker;
 private:
 	Move movesMade[512];
 	Pile piles[13];
@@ -26,6 +27,7 @@ private:
 	Move movesAvailable[32];
 	Random random;
 	int drawCount, roundCount, foundationCount, movesAvailableCount, movesMadeCount, maxRounds;
+	int statesUsed;
 
 	int FoundationMin();
 	int GetTalonCards(Card talon[], int talonMoves[]);
@@ -56,6 +58,7 @@ public:
 	int MovesMadeNormalizedCount();
 	int FoundationCount();
 	int RoundCount();
+	int StatesUsed();
 	int DrawCount();
 	int MovesAdded(Move const& move);
 	int MinimumMovesLeft();

@@ -1,0 +1,32 @@
+Compile
+
+make SimpleSolver
+This compiles SimpleSolver.cpp plus the shared sources (Card.cpp Move.cpp Pile.cpp Random.cpp Solitaire.cpp) into an executable named SimpleSolver.
+
+Or compile everything (make or make all) to also build KlondikeSolver.
+
+Run
+
+./SimpleSolver -game 1 -togame 100
+Common flags (from the source):
+
+Param (aliases)	KlondikeSolver	SimpleSolver	Notes
+-game /g	✅	✅	Starting FC game number
+-togame /tg	✅	✅	Both now use this to trigger loop/CSV mode
+-draw /dc	✅	✅	Draw count 1–12
+-states /s	✅	✅	Max states (default 5,000,000)
+-moves /mvs	✅	✅	Compact move list (single-game)
+-r	✅	✅	Step-by-step replay
+-? /help	✅	✅	Help text
+-recycle /rc	✅	❌	Max stock recycles
+-deck /d	✅	❌	Load a specific deck string
+-out /o	✅	❌	Output method 0/1/2
+-fast /f	✅	❌	Best-effort (non-minimal) solve
+-multi /m	✅	❌	Multithreaded solve
+-beginner	❌	✅	Constraint set
+-expert /exp	❌	✅	Constraint set
+Bare arg	file path	game number	Different meaning
+Example:
+
+
+./SimpleSolver -game 42 -draw 3
