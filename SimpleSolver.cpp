@@ -3,7 +3,9 @@
 #include<cstdlib>
 #include<ctime>
 #include"Solitaire.h"
+#if !defined(_WIN32) && !defined(WIN32)
 #define _stricmp strcasecmp
+#endif
 
 using namespace std;
 

@@ -9,3 +9,13 @@ make
 ./SimpleSolver -game 300001 -togame 400000  -draw 3 -multi 4 -constraint stepup -output all_games-400000.csv                   
 
 ./SimpleSolver -game 400001 -togame 500000  -draw 3 -multi 4 -constraint stepup -output all_games-500000.csv                   
+
+C:\Dev\Apps\Klondike-Solver\vs_solver\x64\Release\vs_solver.exe -game 500001 -togame 600000  -draw 3 -multi 4 -constraint stepup -output all_games-600000.csv                   
+
+C:\Dev\Apps\Klondike-Solver\vs_solver\x64\Release\vs_solver.exe -game 600001 -togame 700000  -draw 3 -multi 4 -constraint stepup -output all_games-700000.csv                   
+
+C:\Dev\Apps\Klondike-Solver\vs_solver\x64\Release\vs_solver.exe -game 700001 -togame 800000  -draw 3 -multi 4 -constraint stepup -output all_games-800000.csv                   
+
+C:\Dev\Apps\Klondike-Solver\vs_solver\x64\Release\vs_solver.exe -game 800001 -togame 900000  -draw 3 -multi 4 -constraint stepup -output all_games-900000.csv                   
+
+C:\Dev\Apps\Klondike-Solver\vs_solver\x64\Release\vs_solver.exe -game 100001 -togame 200000  -draw 3 -multi 4 -constraint stepup -output all_games-200000.csv                   
