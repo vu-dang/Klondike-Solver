@@ -1,8 +1,17 @@
 #include<sstream>
 #include<thread>
 #include<memory>
+#include<vector>
 #include"Solitaire.h"
 using namespace std;
+
+//Per-state bookkeeping for SolveCounting: f is the best-known g+h score used for the
+//search (mirrors the int value the other solvers store in closed); index is a dense
+//0-based id assigned in insertion order, used to index the predecessor adjacency.
+struct NodeData {
+	int f;
+	int index;
+};
 
 const char PILES[] = { "W1234567GCDSH" };
 const char RANKS[] = { "0A23456789TJQK" };
@@ -1188,6 +1197,224 @@ SolveResult Solitaire::SolveMinimal(int maxClosedCount) {
 		MakeMove(bestSolution[i]);
 	}
 	statesUsed = closed.Size();
+	return statesUsed >= maxClosedCount ? (maxFoundationCount == 52 ? SolvedMayNotBeMinimal : CouldNotComplete) : (maxFoundationCount == 52 ? SolvedMinimal : Impossible);
+}
+void Solitaire::ApplyFilter(int level) {
+	//Dispatch to the matching constraint filter; level 0 leaves the full move set (unconstrained).
+	switch (level) {
+		case 1: FilterLevel1Moves(); break;
+		case 2: FilterLevel2Moves(); break;
+		case 3: FilterLevel3Moves(); break;
+		case 4: FilterLevel4Moves(); break;
+		default: break;
+	}
+}
+SolveResult Solitaire::SolveCounting(int maxClosedCount, int level, long long & winStates) {
+	//Best-first search identical in shape to SolveMinimal / SolveLevelN, but it additionally
+	//records the explored state graph (a predecessor list per distinct state) and, after the
+	//solve, counts via a backward sweep from every winning state how many distinct explored
+	//states the win is reachable from. That count is returned in winStates.
+	//
+	//The graph is the cost-bounded graph the search actually explores: once a 52-foundation
+	//solution exists, child states that cannot beat it (f >= best length) are never added, so
+	//the counted set is the "optimal-DAG" of states consistent with reaching the win, not the
+	//(infinite, under unlimited recycling) full reachable graph.
+	winStates = 0;
+	UpdateAvailableMoves();
+	ApplyFilter(level);
+	while (movesAvailableCount == 1 && movesMadeCount < 480) {
+		MakeMove(movesAvailable[0]);
+		UpdateAvailableMoves();
+		ApplyFilter(level);
+	}
+	if (movesAvailableCount == 0) {
+		statesUsed = 0;
+		if (foundationCount == 52) { winStates = 1; return SolvedMinimal; }
+		return Impossible;
+	}
+
+	int openCount = 1;
+	int maxFoundationCount = foundationCount;
+	int bestSolutionMoveCount = 512;
+
+	int powerOf2 = 1;
+	while (maxClosedCount > (1 << (powerOf2 + 2))) {
+		powerOf2++;
+	}
+	HashMap<NodeData> closed(powerOf2);
+	stack<shared_ptr<MoveNode>> open[512];
+	Move movesToMake[512];
+	Move bestSolution[512];
+	bestSolution[0].Count = 255;
+	int startMoves = MinimumMovesLeft() + MovesMadeNormalizedCount();
+
+	//Graph bookkeeping: preds[i] holds the dense ids of states with a recorded move into
+	//state i; goals holds the ids of every explored winning (52-foundation) state.
+	vector<vector<int> > preds;
+	vector<int> goals;
+	int stateCount = 0;
+
+	//Resolve a state to its dense id, inserting it on first sight. New states get the next id
+	//and a fresh predecessor bucket; existing states return their stored id (f is left to the
+	//caller to update). outNode receives the table entry for existing states, NULL for new.
+	auto touch = [&](HashKey const& key, int f, bool & isNew, KeyValue<NodeData> ** outNode) -> int {
+		NodeData nd; nd.f = f; nd.index = stateCount;
+		KeyValue<NodeData> * r = closed.Add(key, nd);
+		if (r == NULL) {
+			isNew = true;
+			if (outNode) { *outNode = NULL; }
+			preds.push_back(vector<int>());
+			return stateCount++;
+		}
+		isNew = false;
+		if (outNode) { *outNode = r; }
+		return r->Value.index;
+	};
+
+	//Seed the closed set with the root state so the first dequeue can resolve its own id.
+	{
+		bool rootNew;
+		touch(GameState(), startMoves, rootNew, NULL);
+	}
+
+	shared_ptr<MoveNode> firstNode = movesMadeCount > 0 ? make_shared<MoveNode>(movesMade[movesMadeCount - 1]) : NULL;
+	shared_ptr<MoveNode> node = firstNode;
+	for (int i = movesMadeCount - 2; i >= 0; i--) {
+		node->Parent = make_shared<MoveNode>(movesMade[i]);
+		node = node->Parent;
+	}
+	if (startMoves > 511) { startMoves = 511; }
+	open[startMoves].push(firstNode);
+	while (closed.Size() < maxClosedCount) {
+		//Check for lowest score length
+		int index = startMoves;
+		while (index < 512 && open[index].size() == 0) { index++; }
+
+		//End solver if no more states
+		if (index >= 512) { break; }
+
+		//Get next state to evaluate
+		openCount--;
+		firstNode = open[index].top();
+		open[index].pop();
+
+		//Initialize game to the found state
+		ResetGame(drawCount);
+		int movesTotal = 0;
+		node = firstNode;
+		while (node != NULL) {
+			movesToMake[movesTotal++] = node->Value;
+			node = node->Parent;
+		}
+		while (movesTotal > 0) {
+			MakeMove(movesToMake[--movesTotal]);
+		}
+
+		//The state was enqueued under this key (before any forced moves), so it is already in
+		//closed; resolve it now to get the parent id for the edges added below.
+		bool parentNew;
+		int parentIndex = touch(GameState(), 0, parentNew, NULL);
+
+		//Make any forced moves (a single allowed move under the chosen constraint)
+		UpdateAvailableMoves();
+		ApplyFilter(level);
+		while (movesAvailableCount == 1 && movesMadeCount < 480) {
+			Move move = movesAvailable[0];
+			MakeMove(move);
+			firstNode = make_shared<MoveNode>(move, firstNode);
+			UpdateAvailableMoves();
+			ApplyFilter(level);
+		}
+		movesTotal = MovesMadeNormalizedCount();
+		//Abandon any branch that has grown pathologically deep so the buffers stay in bounds.
+		if (movesMadeCount >= 480) { continue; }
+
+		//A dequeued state that has reached all 52 foundations is a winning state.
+		if (foundationCount == 52) { goals.push_back(parentIndex); }
+
+		//Check for best solution to foundations
+		if (foundationCount > maxFoundationCount || (foundationCount == maxFoundationCount && bestSolutionMoveCount > movesTotal)) {
+			bestSolutionMoveCount = movesTotal;
+			maxFoundationCount = foundationCount;
+
+			//Save solution
+			for (int i = 0; i < movesMadeCount; i++) {
+				bestSolution[i] = movesMade[i];
+			}
+			bestSolution[movesMadeCount].Count = 255;
+		} else if (maxFoundationCount == 52) {
+			//Dont check state if above or equal to current best solution
+			int helper = MinimumMovesLeft();
+			helper += movesTotal;
+			if (helper >= bestSolutionMoveCount) { continue; }
+		}
+
+		//Make available moves and add them to be evaulated
+		int availableCount = movesAvailableCount;
+		for (int i = 0; i < availableCount; i++) {
+			Move move = movesAvailable[i];
+			int movesAdded = MovesAdded(move);
+
+			MakeMove(move);
+
+			movesAdded += movesTotal;
+			movesAdded += MinimumMovesLeft();
+			if (maxFoundationCount < 52 || movesAdded < bestSolutionMoveCount) {
+				int helper = movesAdded;
+				helper += 52 - foundationCount + roundCount;
+				bool childNew;
+				KeyValue<NodeData> * childNode = NULL;
+				int childIndex = touch(GameState(), movesAdded, childNew, &childNode);
+				//Record the explored edge parent -> child for the backward win sweep.
+				preds[childIndex].push_back(parentIndex);
+
+				if (childNew) {
+					node = make_shared<MoveNode>(move, firstNode);
+					openCount++;
+					if (helper > 511) { helper = 511; }
+					open[helper].push(node);
+				} else if (childNode->Value.f > movesAdded) {
+					childNode->Value.f = movesAdded;
+					node = make_shared<MoveNode>(move, firstNode);
+					openCount++;
+					if (helper > 511) { helper = 511; }
+					open[helper].push(node);
+				}
+			}
+
+			UndoMove();
+		}
+	}
+
+	//Reset game to best solution found
+	ResetGame(drawCount);
+	for (int i = 0; bestSolution[i].Count < 255; i++) {
+		MakeMove(bestSolution[i]);
+	}
+	statesUsed = closed.Size();
+
+	//Backward sweep: every state that can reach a winning state (over recorded edges) counts.
+	if (!goals.empty()) {
+		vector<char> seen(stateCount, 0);
+		vector<int> stack;
+		for (size_t i = 0; i < goals.size(); i++) {
+			int g = goals[i];
+			if (g >= 0 && g < stateCount && !seen[g]) { seen[g] = 1; stack.push_back(g); }
+		}
+		while (!stack.empty()) {
+			int s = stack.back();
+			stack.pop_back();
+			vector<int> & ps = preds[s];
+			for (size_t i = 0; i < ps.size(); i++) {
+				int p = ps[i];
+				if (!seen[p]) { seen[p] = 1; stack.push_back(p); }
+			}
+		}
+		long long count = 0;
+		for (int i = 0; i < stateCount; i++) { if (seen[i]) { count++; } }
+		winStates = count;
+	}
+
 	return statesUsed >= maxClosedCount ? (maxFoundationCount == 52 ? SolvedMayNotBeMinimal : CouldNotComplete) : (maxFoundationCount == 52 ? SolvedMinimal : Impossible);
 }
 int Solitaire::GetTalonCards(Card talon[], int talonMoves[]) {

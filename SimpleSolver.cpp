@@ -2,6 +2,9 @@
 #include<cstring>
 #include<cstdlib>
 #include<ctime>
+#include<fstream>
+#include<string>
+#include<unordered_set>
 #include"Solitaire.h"
 #if !defined(_WIN32) && !defined(WIN32)
 #define _stricmp strcasecmp
@@ -41,6 +44,27 @@ static bool IsSolved(SolveResult result) {
 	return result == SolvedMinimal || result == SolvedMayNotBeMinimal;
 }
 
+//Reads a CSV of game numbers to skip (e.g. a failed_games.csv). The number is taken from the
+//first comma-separated field of each line; a line whose first field is not a number (such as a
+//"game" header or a blank line) is ignored. Returns false only if the file cannot be opened.
+static bool LoadExcludeGames(const char * path, unordered_set<int> & excluded) {
+	ifstream in(path);
+	if (!in.is_open()) { return false; }
+	string line;
+	while (getline(in, line)) {
+		size_t comma = line.find(',');
+		string field = comma == string::npos ? line : line.substr(0, comma);
+		size_t start = field.find_first_not_of(" \t\r\n");
+		if (start == string::npos) { continue; }
+		size_t end = field.find_last_not_of(" \t\r\n");
+		field = field.substr(start, end - start + 1);
+		char c = field[0];
+		if (c != '-' && (c < '0' || c > '9')) { continue; }
+		excluded.insert(atoi(field.c_str()));
+	}
+	return true;
+}
+
 //Resets the dealt game and runs the single solver matching mode. Anything other than
 //level1/level2/level3/level4 runs the unconstrained minimal solver. numThreads > 1 uses
 //the multithreaded minimal solver, which only exists for the unconstrained mode; the
@@ -52,6 +76,37 @@ static SolveResult RunSolve(Solitaire & s, int drawCount, int maxStates, const c
 	if (_stricmp(mode, "level3") == 0) { return s.SolveLevel3(maxStates); }
 	if (_stricmp(mode, "level4") == 0) { return s.SolveLevel4(maxStates); }
 	return numThreads > 1 ? s.SolveMinimalMultithreaded(numThreads, maxStates) : s.SolveMinimal(maxStates);
+}
+
+//Maps a constraint mode name to the level number SolveCounting expects (0 = unconstrained).
+static int LevelOf(const char * mode) {
+	if (_stricmp(mode, "level1") == 0) { return 1; }
+	if (_stricmp(mode, "level2") == 0) { return 2; }
+	if (_stricmp(mode, "level3") == 0) { return 3; }
+	if (_stricmp(mode, "level4") == 0) { return 4; }
+	return 0;
+}
+
+//Like SolveConstraint, but uses the single-threaded SolveCounting so it can also report, via
+//winStates, the number of distinct explored states from which the win is reachable. For
+//"stepup" it escalates level1 -> ... -> unconstrained, stopping at the first mode that solves;
+//winStates reflects that solving mode (and is 0 for an unsolved deal).
+static SolveResult SolveConstraintCounting(Solitaire & s, int drawCount, int maxStates, const char * constraint, const char * & usedMode, long long & winStates) {
+	winStates = 0;
+	if (_stricmp(constraint, "stepup") == 0) {
+		static const char * ladder[] = { "level1", "level2", "level3", "level4", "unconstrained" };
+		SolveResult result = Impossible;
+		for (int i = 0; i < 5; i++) {
+			s.ResetGame(drawCount);
+			result = s.SolveCounting(maxStates, LevelOf(ladder[i]), winStates);
+			usedMode = ladder[i];
+			if (IsSolved(result)) { return result; }
+		}
+		return result;
+	}
+	usedMode = constraint;
+	s.ResetGame(drawCount);
+	return s.SolveCounting(maxStates, LevelOf(constraint), winStates);
 }
 
 //Solves the already-dealt game under the requested constraint. For "stepup" it escalates
@@ -85,6 +140,7 @@ int main(int argc, char * argv[]) {
 	int multiThreaded = 1;
 	const char * constraint = "unconstrained";
 	const char * outputFile = NULL;
+	const char * excludeFile = NULL;
 
 	for (int i = 1; i < argc; i++) {
 		if (_stricmp(argv[i], "-game") == 0 || _stricmp(argv[i], "/game") == 0 || _stricmp(argv[i], "-g") == 0 || _stricmp(argv[i], "/g") == 0) {
@@ -114,6 +170,9 @@ int main(int argc, char * argv[]) {
 		} else if (_stricmp(argv[i], "-output") == 0 || _stricmp(argv[i], "/output") == 0 || _stricmp(argv[i], "-o") == 0 || _stricmp(argv[i], "/o") == 0) {
 			if (i + 1 >= argc) { cout << "You must specify an output filename.\n"; return 0; }
 			outputFile = argv[++i];
+		} else if (_stricmp(argv[i], "-excludegames") == 0 || _stricmp(argv[i], "/excludegames") == 0 || _stricmp(argv[i], "-eg") == 0 || _stricmp(argv[i], "/eg") == 0) {
+			if (i + 1 >= argc) { cout << "You must specify a path to an exclude CSV.\n"; return 0; }
+			excludeFile = argv[++i];
 		} else if (_stricmp(argv[i], "-mvs") == 0 || _stricmp(argv[i], "/mvs") == 0 || _stricmp(argv[i], "-moves") == 0 || _stricmp(argv[i], "/moves") == 0) {
 			showMoves = true;
 		} else if (_stricmp(argv[i], "-r") == 0 || _stricmp(argv[i], "/r") == 0) {
@@ -141,11 +200,23 @@ int main(int argc, char * argv[]) {
 			cout << "                    Ignored by the constrained solvers, which are single-threaded.\n";
 			cout << "  /OUTPUT file [/O file]  Write the CSV output to file (created in the current\n";
 			cout << "                    directory) instead of stdout. Only applies in /TOGAME range mode.\n";
+			cout << "  /EXCLUDEGAMES file [/EG file]  Skip any deal whose number appears in the first\n";
+			cout << "                    column of this CSV (e.g. a failed_games.csv). /TOGAME range mode only.\n";
 			cout << "  /MOVES [/MVS]     Output the compact list of moves made when solved.\n";
 			cout << "  /R                Replay the solution step by step to output.\n";
 			cout << "  #                 A bare number is treated as the FC game number.\n";
 			return 0;
+		} else if (argv[i][0] == '-' || argv[i][0] == '/') {
+			cout << "Unknown option '" << argv[i] << "'. Use /? for usage.\n"; return 0;
 		} else {
+			//A bare token is accepted only if it is a plain number (the FC game number).
+			//Reject anything else (e.g. a misspelled flag or stray path) so it can't be
+			//silently turned into game 0.
+			for (const char * p = argv[i]; *p != '\0'; p++) {
+				if (*p < '0' || *p > '9') {
+					cout << "Unknown argument '" << argv[i] << "'. Use /? for usage.\n"; return 0;
+				}
+			}
 			gameNumber = atoi(argv[i]);
 		}
 	}
@@ -163,16 +234,33 @@ int main(int argc, char * argv[]) {
 			if (out == NULL) { cout << "Could not open output file '" << outputFile << "' for writing.\n"; return 0; }
 			cout << "Writing CSV output to " << outputFile << "\n";
 		}
-		fprintf(out, "game,moves,time_us,num_recycles,max_states,constraint\n");
+		//Optionally load a set of game numbers to skip (e.g. previously failed games).
+		unordered_set<int> excluded;
+		if (excludeFile != NULL) {
+			if (!LoadExcludeGames(excludeFile, excluded)) {
+				cout << "Could not open exclude file '" << excludeFile << "' for reading.\n";
+				if (out != stdout) { fclose(out); }
+				return 0;
+			}
+			//Only report to stdout when the CSV itself is going to a file, so stdout output stays clean.
+			if (out != stdout) { cout << "Excluding " << excluded.size() << " games listed in " << excludeFile << "\n"; }
+		}
+
+		fprintf(out, "game,moves,time_us,num_recycles,max_states,constraint,num_wins\n");
 		for (int deal = gameNumber; deal <= last; deal++) {
+			//Skip any deal in the exclude set without attempting to solve it.
+			if (!excluded.empty() && excluded.count(deal) > 0) { continue; }
 			s.ShuffleFC(deal);
 			const char * usedMode;
+			long long winStates = 0;
 			clock_t start = clock();
-			SolveResult result = SolveConstraint(s, drawCount, maxStates, constraint, multiThreaded, usedMode);
+			//SolveConstraintCounting also counts the winning states; it is single-threaded,
+			//so /MULTI does not apply in range mode.
+			SolveResult result = SolveConstraintCounting(s, drawCount, maxStates, constraint, usedMode, winStates);
 			clock_t elapsed = clock() - start;
-			//Print a row for every deal; unsolved deals report 0 moves.
+			//Print a row for every deal; unsolved deals report 0 moves and 0 winning states.
 			int moves = IsSolved(result) ? s.MovesMadeNormalizedCount() : 0;
-			fprintf(out, "%d,%d,%lu,%d,%d,%s\n", deal, moves, (unsigned long)elapsed, s.RoundCount(), s.StatesUsed(), usedMode);
+			fprintf(out, "%d,%d,%lu,%d,%d,%s,%lld\n", deal, moves, (unsigned long)elapsed, s.RoundCount(), s.StatesUsed(), usedMode, winStates);
 			fflush(out);
 		}
 		if (out != stdout) { fclose(out); }

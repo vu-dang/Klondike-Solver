@@ -35,6 +35,7 @@ private:
 	void FilterLevel2Moves();
 	void FilterLevel3Moves();
 	void FilterLevel4Moves();
+	void ApplyFilter(int level);
 public:
 	void Initialize();
 	int Shuffle1(int dealNumber = -1);
@@ -55,6 +56,10 @@ public:
 	SolveResult SolveLevel3(int maxClosedCount);
 	SolveResult SolveLevel4(int maxClosedCount);
 	SolveResult SolveRandom(int numberOfTimesToPlay, int solutionsToFind);
+	//Solves like SolveMinimal/SolveLevelN (level 0 = unconstrained, 1-4 = constraint level)
+	//but also records the explored state graph and counts, via winStates, the number of
+	//distinct explored states from which the win is reachable (the "winning-states" metric).
+	SolveResult SolveCounting(int maxClosedCount, int level, long long & winStates);
 	int MovesAvailableCount();
 	int MovesMadeCount();
 	int MovesMadeNormalizedCount();
