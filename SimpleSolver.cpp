@@ -11,52 +11,57 @@ using namespace std;
 
 //A variation of the Klondike solver that deals a game by its FreeCell (FC) game
 //number and solves it. By default it runs the same full, unconstrained exhaustive
-//search as the minimal solver. Three optional constraint sets are also available:
+//search as the minimal solver. Four optional constraint sets are also available,
+//forming a strict inheritance chain where each level adds one rule on top of the
+//next-higher-numbered level (level1 is the most restrictive):
 //
-//  simple (/SIMPLE) - the unconstrained exhaustive search with a single added rule:
-//          it is not allowed to draw from the stock while any other move is available
-//          (a move between tableau columns, a move to a foundation, or a move of the
-//          current draw card onto a tableau column).
+//  level4 (/CONSTRAINT level4) - never take a card back off a foundation onto the
+//          tableau. Drawing from the stock is otherwise unrestricted.
 //
-//  beginner (/BEGINNER) - the simple rule plus a second one: when any move onto a
-//          foundation is available, only the foundation moves are explored.
+//  level3 (/CONSTRAINT level3) - level4's rule, plus: never draw from the stock while
+//          any other move is available (a tableau move, a move to a foundation, or a
+//          play of the current waste card onto a tableau column).
 //
-//  expert (/EXPERT) - a different restriction: drawing from the stock is unrestricted,
-//          but the search never takes a card back off a foundation onto the tableau.
+//  level2 (/CONSTRAINT level2) - level3's rules, plus: when any move onto a foundation
+//          OR any play of the top waste card is available, explore only those.
+//
+//  level1 (/CONSTRAINT level1) - level2's rules, plus: when any move onto a foundation
+//          is available, explore only the foundation moves.
 //
 //In every case the remaining branches are still searched exhaustively, so the result is
 //the minimal solution obeying the chosen constraints, or that the deal is impossible
 //under them (which can happen even for deals the unconstrained solver can win).
 //
 //The constraint set is chosen with /CONSTRAINT <mode>, where <mode> is one of
-//beginner, simple, expert, or stepup. With no /CONSTRAINT the unconstrained minimal
-//solver is used. "stepup" escalates beginner -> simple -> expert -> unconstrained,
-//stopping at the first mode that solves the deal.
+//level1, level2, level3, level4, or stepup. With no /CONSTRAINT the unconstrained
+//minimal solver is used. "stepup" escalates level1 -> level2 -> level3 -> level4 ->
+//unconstrained, stopping at the first mode that solves the deal.
 
 static bool IsSolved(SolveResult result) {
 	return result == SolvedMinimal || result == SolvedMayNotBeMinimal;
 }
 
 //Resets the dealt game and runs the single solver matching mode. Anything other than
-//beginner/simple/expert runs the unconstrained minimal solver. numThreads > 1 uses the
-//multithreaded minimal solver, which only exists for the unconstrained mode; the
+//level1/level2/level3/level4 runs the unconstrained minimal solver. numThreads > 1 uses
+//the multithreaded minimal solver, which only exists for the unconstrained mode; the
 //constrained solvers always run single-threaded.
 static SolveResult RunSolve(Solitaire & s, int drawCount, int maxStates, const char * mode, int numThreads) {
 	s.ResetGame(drawCount);
-	if (_stricmp(mode, "beginner") == 0) { return s.SolveBeginner(maxStates); }
-	if (_stricmp(mode, "simple") == 0) { return s.SolveIntermediate(maxStates); }
-	if (_stricmp(mode, "expert") == 0) { return s.SolveExpert(maxStates); }
+	if (_stricmp(mode, "level1") == 0) { return s.SolveLevel1(maxStates); }
+	if (_stricmp(mode, "level2") == 0) { return s.SolveLevel2(maxStates); }
+	if (_stricmp(mode, "level3") == 0) { return s.SolveLevel3(maxStates); }
+	if (_stricmp(mode, "level4") == 0) { return s.SolveLevel4(maxStates); }
 	return numThreads > 1 ? s.SolveMinimalMultithreaded(numThreads, maxStates) : s.SolveMinimal(maxStates);
 }
 
 //Solves the already-dealt game under the requested constraint. For "stepup" it escalates
-//beginner -> simple -> expert -> unconstrained, stopping at the first mode that solves.
-//Sets usedMode to the mode that produced the returned result.
+//level1 -> level2 -> level3 -> level4 -> unconstrained, stopping at the first mode that
+//solves. Sets usedMode to the mode that produced the returned result.
 static SolveResult SolveConstraint(Solitaire & s, int drawCount, int maxStates, const char * constraint, int numThreads, const char * & usedMode) {
 	if (_stricmp(constraint, "stepup") == 0) {
-		static const char * ladder[] = { "beginner", "simple", "expert", "unconstrained" };
+		static const char * ladder[] = { "level1", "level2", "level3", "level4", "unconstrained" };
 		SolveResult result = Impossible;
-		for (int i = 0; i < 4; i++) {
+		for (int i = 0; i < 5; i++) {
 			result = RunSolve(s, drawCount, maxStates, ladder[i], numThreads);
 			usedMode = ladder[i];
 			if (IsSolved(result)) { return result; }
@@ -97,10 +102,10 @@ int main(int argc, char * argv[]) {
 			maxStates = atoi(argv[++i]);
 			if (maxStates < 1) { cout << "You must specify a valid max number of states.\n"; return 0; }
 		} else if (_stricmp(argv[i], "-constraint") == 0 || _stricmp(argv[i], "/constraint") == 0 || _stricmp(argv[i], "-c") == 0 || _stricmp(argv[i], "/c") == 0) {
-			if (i + 1 >= argc) { cout << "You must specify a constraint: beginner, simple, expert, or stepup.\n"; return 0; }
+			if (i + 1 >= argc) { cout << "You must specify a constraint: level1, level2, level3, level4, or stepup.\n"; return 0; }
 			constraint = argv[++i];
-			if (_stricmp(constraint, "beginner") != 0 && _stricmp(constraint, "simple") != 0 && _stricmp(constraint, "expert") != 0 && _stricmp(constraint, "stepup") != 0) {
-				cout << "Invalid constraint '" << constraint << "'. Use beginner, simple, expert, or stepup.\n"; return 0;
+			if (_stricmp(constraint, "level1") != 0 && _stricmp(constraint, "level2") != 0 && _stricmp(constraint, "level3") != 0 && _stricmp(constraint, "level4") != 0 && _stricmp(constraint, "stepup") != 0) {
+				cout << "Invalid constraint '" << constraint << "'. Use level1, level2, level3, level4, or stepup.\n"; return 0;
 			}
 		} else if (_stricmp(argv[i], "-m") == 0 || _stricmp(argv[i], "/m") == 0 || _stricmp(argv[i], "-multi") == 0 || _stricmp(argv[i], "/multi") == 0) {
 			if (i + 1 >= argc) { cout << "You must specify number of threads.\n"; return 0; }
@@ -124,11 +129,13 @@ int main(int argc, char * argv[]) {
 			cout << "                    printing CSV lines per deal.\n";
 			cout << "  /DRAW # [/DC #]   Draw count to use. Defaults to 1.\n";
 			cout << "  /STATES # [/S #]  Max game states to evaluate. Defaults to 5,000,000.\n";
-			cout << "  /CONSTRAINT mode [/C mode]  Constraint set to impose. One of:\n";
-			cout << "                      beginner - simple rule, plus explore only foundation moves when any exist.\n";
-			cout << "                      simple   - never draw from stock while another move exists.\n";
-			cout << "                      expert   - exhaustive search that never un-plays a foundation card.\n";
-			cout << "                      stepup   - try beginner, then simple, then expert, then unconstrained.\n";
+			cout << "  /CONSTRAINT mode [/C mode]  Constraint set to impose. Each level adds a rule on\n";
+			cout << "                    top of the next (level1 is the most restrictive):\n";
+			cout << "                      level4 - never un-play a foundation card.\n";
+			cout << "                      level3 - level4, plus never draw from stock while another move exists.\n";
+			cout << "                      level2 - level3, plus explore only foundation/waste moves when any exist.\n";
+			cout << "                      level1 - level2, plus explore only foundation moves when any exist.\n";
+			cout << "                      stepup - try level1, then level2, level3, level4, then unconstrained.\n";
 			cout << "                    Omit /CONSTRAINT to run the unconstrained minimal solver.\n";
 			cout << "  /MULTI # [/M #]   Use # threads (2-99) for the unconstrained minimal solve.\n";
 			cout << "                    Ignored by the constrained solvers, which are single-threaded.\n";

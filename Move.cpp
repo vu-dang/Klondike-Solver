@@ -18,7 +18,7 @@ MoveNode::MoveNode(Move move, shared_ptr<MoveNode> const& parent) {
 }
 //MoveNodes form a singly-linked list through Parent. The default (recursive) destructor
 //would tear down a long chain one stack frame per node, overflowing the stack on deep
-//solution paths (e.g. draw-3 deals under the beginner constraint). Unlink the chain
+//solution paths (e.g. draw-3 deals under the level1 constraint). Unlink the chain
 //iteratively instead: only follow a Parent that this node solely owns, so each node is
 //destroyed with an already-empty Parent and no recursion occurs.
 MoveNode::~MoveNode() {

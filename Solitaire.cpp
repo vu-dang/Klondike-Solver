@@ -432,14 +432,42 @@ SolveResult Solitaire::SolveFast(int maxClosedCount, int twoShift, int threeShif
 	statesUsed = closed.Size();
 	return maxFoundationCount == 52 ? SolvedMayNotBeMinimal : CouldNotComplete;
 }
-void Solitaire::FilterIntermediateMoves() {
-	//The "intermediate method" is allowed to draw from the stock only when no other move
-	//exists. A draw is encoded as a talon move with From == WASTE and Extra > 0 (the
-	//number of cards that must be flipped from the stock to expose the played card).
-	//Playing a card that is already on top of the waste (Extra == 0), any tableau move,
-	//and any move to a foundation are NOT draws. So whenever at least one non-draw move
-	//is available we strip every draw move from the branch set; the search then explores
-	//all of the remaining branches exactly as the exhaustive solver would.
+//The four constraint filters form a strict inheritance chain: each one calls the
+//next-higher-numbered filter first (so it inherits all of that filter's pruning) and then
+//applies its own additional rule. The chain, from base to most restrictive, is:
+//  level4 -> never un-play a foundation card (drawing otherwise unrestricted)
+//  level3 -> level4 + no drawing from the stock while any other move is available
+//  level2 -> level3 + when any foundation move OR waste-card play exists, keep only those
+//  level1 -> level2 + when any foundation move exists, keep only foundation moves
+//This yields the nesting level1 (subset of) level2 (subset of) level3 (subset of) level4.
+void Solitaire::FilterLevel4Moves() {
+	//Base rule for every level: never un-play a foundation card, i.e. drop any move whose
+	//source is a foundation pile. Drawing from the stock is unrestricted. Those foundation
+	//to tableau moves are rarely needed to solve optimally, so dropping them prunes the
+	//search at the cost of missing the few deals that require un-playing a foundation card.
+	int kept = 0;
+	for (int i = 0; i < movesAvailableCount; i++) {
+		if (movesAvailable[i].From < FOUNDATION1C) { kept++; }
+	}
+
+	if (kept == movesAvailableCount) { return; }
+
+	int write = 0;
+	for (int i = 0; i < movesAvailableCount; i++) {
+		if (movesAvailable[i].From < FOUNDATION1C) { movesAvailable[write++] = movesAvailable[i]; }
+	}
+	movesAvailableCount = write;
+}
+void Solitaire::FilterLevel3Moves() {
+	//Level 3 inherits the level-4 base (never un-play a foundation card) and adds: draw
+	//from the stock only when no other move exists. A draw is encoded as a talon move with
+	//From == WASTE and Extra > 0 (the number of cards flipped from the stock to expose the
+	//played card). Playing a card already on top of the waste (Extra == 0), any tableau
+	//move, and any move to a foundation are NOT draws. So whenever at least one non-draw
+	//move is available we strip every draw move from the branch set. The un-play removal
+	//runs first so the all-or-nothing guard below can never empty the move set.
+	FilterLevel4Moves();
+
 	int nonDraw = 0;
 	for (int i = 0; i < movesAvailableCount; i++) {
 		Move m = movesAvailable[i];
@@ -455,13 +483,31 @@ void Solitaire::FilterIntermediateMoves() {
 	}
 	movesAvailableCount = write;
 }
-void Solitaire::FilterBeginnerMoves() {
-	//The "beginner method" adds a second pruning rule on top of the intermediate method.
-	//First it applies the same rule: no drawing from the stock while any card move is
-	//available. Then, if any move onto a foundation is available, it prunes every non
-	//foundation move so that only the foundation moves are explored. As with the
-	//intermediate method all of the surviving branches are still searched exhaustively.
-	FilterIntermediateMoves();
+void Solitaire::FilterLevel2Moves() {
+	//Level 2 inherits the level-3 rules and adds: when any move onto a foundation OR any
+	//play of the face-up top waste card is available, keep only those (the union of all
+	//foundation moves and all waste-card plays) and prune everything else. After level 3
+	//strips draws, the surviving From == WASTE moves are exactly the waste-card plays.
+	FilterLevel3Moves();
+
+	int kept = 0;
+	for (int i = 0; i < movesAvailableCount; i++) {
+		if (movesAvailable[i].To >= FOUNDATION1C || movesAvailable[i].From == WASTE) { kept++; }
+	}
+
+	if (kept == 0 || kept == movesAvailableCount) { return; }
+
+	int write = 0;
+	for (int i = 0; i < movesAvailableCount; i++) {
+		if (movesAvailable[i].To >= FOUNDATION1C || movesAvailable[i].From == WASTE) { movesAvailable[write++] = movesAvailable[i]; }
+	}
+	movesAvailableCount = write;
+}
+void Solitaire::FilterLevel1Moves() {
+	//Level 1 inherits the level-2 rules and adds: when any move onto a foundation is
+	//available, prune every non-foundation move so that only the foundation moves are
+	//explored. As with every level the surviving branches are still searched exhaustively.
+	FilterLevel2Moves();
 
 	int foundationMoves = 0;
 	for (int i = 0; i < movesAvailableCount; i++) {
@@ -476,40 +522,20 @@ void Solitaire::FilterBeginnerMoves() {
 	}
 	movesAvailableCount = write;
 }
-void Solitaire::FilterExpertMoves() {
-	//The "expert" method runs the full exhaustive search (drawing from the stock is
-	//unrestricted) but never considers taking a card back off a foundation, i.e. any move
-	//whose source is a foundation pile. Every other branch is explored just as the minimal
-	//solver would. Those foundation to tableau moves are rarely needed to solve optimally,
-	//so dropping them prunes the search at the cost of missing the few deals that require
-	//un-playing a foundation card.
-	int kept = 0;
-	for (int i = 0; i < movesAvailableCount; i++) {
-		if (movesAvailable[i].From < FOUNDATION1C) { kept++; }
-	}
-
-	if (kept == movesAvailableCount) { return; }
-
-	int write = 0;
-	for (int i = 0; i < movesAvailableCount; i++) {
-		if (movesAvailable[i].From < FOUNDATION1C) { movesAvailable[write++] = movesAvailable[i]; }
-	}
-	movesAvailableCount = write;
-}
-SolveResult Solitaire::SolveIntermediate(int maxClosedCount) {
-	//Exhaustive best-first search, identical to SolveMinimal except that the set of
-	//branches explored at each state is first passed through FilterIntermediateMoves: drawing
-	//from the stock is forbidden while any other move is available. The result is the
-	//minimal length solution that obeys that constraint, or Impossible if the constraint
-	//makes the deal unwinnable.
+SolveResult Solitaire::SolveLevel3(int maxClosedCount) {
+	//Exhaustive best-first search, identical to SolveMinimal except that the branch set at
+	//each state is first passed through FilterLevel3Moves: a foundation card is never
+	//un-played, and drawing from the stock is forbidden while any other move is available.
+	//The result is the minimal length solution obeying those constraints, or Impossible if
+	//they make the deal unwinnable.
 	UpdateAvailableMoves();
-	FilterIntermediateMoves();
+	FilterLevel3Moves();
 	//A constrained game can present a chain of forced single moves; the movesMadeCount
 	//guard keeps such a chain (or a forced cycle) from overrunning the movesMade buffer.
 	while (movesAvailableCount == 1 && movesMadeCount < 480) {
 		MakeMove(movesAvailable[0]);
 		UpdateAvailableMoves();
-		FilterIntermediateMoves();
+		FilterLevel3Moves();
 	}
 	if (movesAvailableCount == 0) { statesUsed = 0; return foundationCount == 52 ? SolvedMinimal : Impossible; }
 
@@ -562,15 +588,15 @@ SolveResult Solitaire::SolveIntermediate(int maxClosedCount) {
 			MakeMove(movesToMake[--movesTotal]);
 		}
 
-		//Make any forced moves (a single allowed move under the intermediate constraint)
+		//Make any forced moves (a single allowed move under the level 3 constraint)
 		UpdateAvailableMoves();
-		FilterIntermediateMoves();
+		FilterLevel3Moves();
 		while (movesAvailableCount == 1 && movesMadeCount < 480) {
 			Move move = movesAvailable[0];
 			MakeMove(move);
 			firstNode = make_shared<MoveNode>(move, firstNode);
 			UpdateAvailableMoves();
-			FilterIntermediateMoves();
+			FilterLevel3Moves();
 		}
 		movesTotal = MovesMadeNormalizedCount();
 		//Abandon any branch that has grown pathologically deep (e.g. a forced cycle the
@@ -633,19 +659,20 @@ SolveResult Solitaire::SolveIntermediate(int maxClosedCount) {
 	statesUsed = closed.Size();
 	return statesUsed >= maxClosedCount ? (maxFoundationCount == 52 ? SolvedMayNotBeMinimal : CouldNotComplete) : (maxFoundationCount == 52 ? SolvedMinimal : Impossible);
 }
-SolveResult Solitaire::SolveBeginner(int maxClosedCount) {
-	//Exhaustive best-first search identical to SolveIntermediate, but the branch set at each
-	//state is passed through FilterBeginnerMoves instead: drawing is forbidden while a card
-	//move exists, and when any foundation move is available only foundation moves are
-	//explored. Returns the minimal solution obeying both constraints, or Impossible.
+SolveResult Solitaire::SolveLevel1(int maxClosedCount) {
+	//Exhaustive best-first search identical to SolveLevel3, but the branch set at each state
+	//is passed through FilterLevel1Moves instead. Level 1 inherits every higher level's rule
+	//(never un-play a foundation card; no drawing while a card move exists; prefer the
+	//foundation/waste union) and adds: when any foundation move is available, only foundation
+	//moves are explored. Returns the minimal solution obeying those constraints, or Impossible.
 	UpdateAvailableMoves();
-	FilterBeginnerMoves();
+	FilterLevel1Moves();
 	//A constrained game can present a chain of forced single moves; the movesMadeCount
 	//guard keeps such a chain (or a forced cycle) from overrunning the movesMade buffer.
 	while (movesAvailableCount == 1 && movesMadeCount < 480) {
 		MakeMove(movesAvailable[0]);
 		UpdateAvailableMoves();
-		FilterBeginnerMoves();
+		FilterLevel1Moves();
 	}
 	if (movesAvailableCount == 0) { statesUsed = 0; return foundationCount == 52 ? SolvedMinimal : Impossible; }
 
@@ -698,15 +725,15 @@ SolveResult Solitaire::SolveBeginner(int maxClosedCount) {
 			MakeMove(movesToMake[--movesTotal]);
 		}
 
-		//Make any forced moves (a single allowed move under the beginner constraint)
+		//Make any forced moves (a single allowed move under the level 1 constraint)
 		UpdateAvailableMoves();
-		FilterBeginnerMoves();
+		FilterLevel1Moves();
 		while (movesAvailableCount == 1 && movesMadeCount < 480) {
 			Move move = movesAvailable[0];
 			MakeMove(move);
 			firstNode = make_shared<MoveNode>(move, firstNode);
 			UpdateAvailableMoves();
-			FilterBeginnerMoves();
+			FilterLevel1Moves();
 		}
 		movesTotal = MovesMadeNormalizedCount();
 		//Abandon any branch that has grown pathologically deep (e.g. a forced cycle the
@@ -769,17 +796,154 @@ SolveResult Solitaire::SolveBeginner(int maxClosedCount) {
 	statesUsed = closed.Size();
 	return statesUsed >= maxClosedCount ? (maxFoundationCount == 52 ? SolvedMayNotBeMinimal : CouldNotComplete) : (maxFoundationCount == 52 ? SolvedMinimal : Impossible);
 }
-SolveResult Solitaire::SolveExpert(int maxClosedCount) {
+SolveResult Solitaire::SolveLevel2(int maxClosedCount) {
+	//Exhaustive best-first search identical to SolveLevel3, but the branch set at each state
+	//is passed through FilterLevel2Moves instead. Level 2 inherits the higher levels' rules
+	//(never un-play a foundation card; no drawing while a card move exists) and adds: when
+	//any foundation move OR waste-card play is available, only those are explored. Returns
+	//the minimal solution obeying those constraints, or Impossible.
+	UpdateAvailableMoves();
+	FilterLevel2Moves();
+	//A constrained game can present a chain of forced single moves; the movesMadeCount
+	//guard keeps such a chain (or a forced cycle) from overrunning the movesMade buffer.
+	while (movesAvailableCount == 1 && movesMadeCount < 480) {
+		MakeMove(movesAvailable[0]);
+		UpdateAvailableMoves();
+		FilterLevel2Moves();
+	}
+	if (movesAvailableCount == 0) { statesUsed = 0; return foundationCount == 52 ? SolvedMinimal : Impossible; }
+
+	int openCount = 1;
+	int maxFoundationCount = foundationCount;
+	int bestSolutionMoveCount = 512;
+	int totalOpenCount = 1;
+
+	int powerOf2 = 1;
+	while (maxClosedCount > (1 << (powerOf2 + 2))) {
+		powerOf2++;
+	}
+	HashMap<int> closed(powerOf2);
+	stack<shared_ptr<MoveNode>> open[512];
+	Move movesToMake[512];
+	Move bestSolution[512];
+	bestSolution[0].Count = 255;
+	int startMoves = MinimumMovesLeft() + MovesMadeNormalizedCount();
+
+	shared_ptr<MoveNode> firstNode = movesMadeCount > 0 ? make_shared<MoveNode>(movesMade[movesMadeCount - 1]) : NULL;
+	shared_ptr<MoveNode> node = firstNode;
+	for (int i = movesMadeCount - 2; i >= 0; i--) {
+		node->Parent = make_shared<MoveNode>(movesMade[i]);
+		node = node->Parent;
+	}
+	if (startMoves > 511) { startMoves = 511; }
+	open[startMoves].push(firstNode);
+	while (closed.Size() < maxClosedCount) {
+		//Check for lowest score length
+		int index = startMoves;
+		while (index < 512 && open[index].size() == 0) { index++; }
+
+		//End solver if no more states
+		if (index >= 512) { break; }
+
+		//Get next state to evaluate
+		openCount--;
+		firstNode = open[index].top();
+		open[index].pop();
+
+		//Initialize game to the found state
+		ResetGame(drawCount);
+		int movesTotal = 0;
+		node = firstNode;
+		while (node != NULL) {
+			movesToMake[movesTotal++] = node->Value;
+			node = node->Parent;
+		}
+		while (movesTotal > 0) {
+			MakeMove(movesToMake[--movesTotal]);
+		}
+
+		//Make any forced moves (a single allowed move under the level 2 constraint)
+		UpdateAvailableMoves();
+		FilterLevel2Moves();
+		while (movesAvailableCount == 1 && movesMadeCount < 480) {
+			Move move = movesAvailable[0];
+			MakeMove(move);
+			firstNode = make_shared<MoveNode>(move, firstNode);
+			UpdateAvailableMoves();
+			FilterLevel2Moves();
+		}
+		movesTotal = MovesMadeNormalizedCount();
+		//Abandon any branch that has grown pathologically deep (e.g. a forced cycle the
+		//constraint cannot escape) so the move buffers and open index stay in bounds.
+		if (movesMadeCount >= 480) { continue; }
+
+		//Check for best solution to foundations
+		if (foundationCount > maxFoundationCount || (foundationCount == maxFoundationCount && bestSolutionMoveCount > movesTotal)) {
+			bestSolutionMoveCount = movesTotal;
+			maxFoundationCount = foundationCount;
+
+			//Save solution
+			for (int i = 0; i < movesMadeCount; i++) {
+				bestSolution[i] = movesMade[i];
+			}
+			bestSolution[movesMadeCount].Count = 255;
+		} else if (maxFoundationCount == 52) {
+			//Dont check state if above or equal to current best solution
+			int helper = MinimumMovesLeft();
+			helper += movesTotal;
+			if (helper >= bestSolutionMoveCount) { continue; }
+		}
+
+		//Make available moves and add them to be evaulated
+		for (int i = 0; i < movesAvailableCount; i++) {
+			Move move = movesAvailable[i];
+			int movesAdded = MovesAdded(move);
+
+			MakeMove(move);
+
+			movesAdded += movesTotal;
+			movesAdded += MinimumMovesLeft();
+			if (maxFoundationCount < 52 || movesAdded < bestSolutionMoveCount) {
+				int helper = movesAdded;
+				helper += 52 - foundationCount + roundCount;
+				HashKey key = GameState();
+				KeyValue<int> * result = closed.Add(key, movesAdded);
+				if (result == NULL || result->Value > movesAdded) {
+					node = make_shared<MoveNode>(move, firstNode);
+					if (result != NULL) { result->Value = movesAdded; }
+
+					totalOpenCount++;
+					openCount++;
+					//open[] has 512 score buckets; deep states (e.g. draw 3 under a
+					//constraint) can score past that, so cap the index to stay in bounds.
+					if (helper > 511) { helper = 511; }
+					open[helper].push(node);
+				}
+			}
+
+			UndoMove();
+		}
+	}
+
+	//Reset game to best solution found
+	ResetGame(drawCount);
+	for (int i = 0; bestSolution[i].Count < 255; i++) {
+		MakeMove(bestSolution[i]);
+	}
+	statesUsed = closed.Size();
+	return statesUsed >= maxClosedCount ? (maxFoundationCount == 52 ? SolvedMayNotBeMinimal : CouldNotComplete) : (maxFoundationCount == 52 ? SolvedMinimal : Impossible);
+}
+SolveResult Solitaire::SolveLevel4(int maxClosedCount) {
 	//Exhaustive best-first search identical to SolveMinimal, but the branch set at each
-	//state is passed through FilterExpertMoves: moves that take a card back off a
+	//state is passed through FilterLevel4Moves: moves that take a card back off a
 	//foundation are never considered. Drawing from the stock is unrestricted. Returns the
 	//minimal solution that never un-plays a foundation card, or Impossible if none exists.
 	UpdateAvailableMoves();
-	FilterExpertMoves();
+	FilterLevel4Moves();
 	while (movesAvailableCount == 1 && movesMadeCount < 480) {
 		MakeMove(movesAvailable[0]);
 		UpdateAvailableMoves();
-		FilterExpertMoves();
+		FilterLevel4Moves();
 	}
 	if (movesAvailableCount == 0) { statesUsed = 0; return foundationCount == 52 ? SolvedMinimal : Impossible; }
 
@@ -832,15 +996,15 @@ SolveResult Solitaire::SolveExpert(int maxClosedCount) {
 			MakeMove(movesToMake[--movesTotal]);
 		}
 
-		//Make any forced moves (a single allowed move under the expert constraint)
+		//Make any forced moves (a single allowed move under the level 4 constraint)
 		UpdateAvailableMoves();
-		FilterExpertMoves();
+		FilterLevel4Moves();
 		while (movesAvailableCount == 1 && movesMadeCount < 480) {
 			Move move = movesAvailable[0];
 			MakeMove(move);
 			firstNode = make_shared<MoveNode>(move, firstNode);
 			UpdateAvailableMoves();
-			FilterExpertMoves();
+			FilterLevel4Moves();
 		}
 		movesTotal = MovesMadeNormalizedCount();
 		//Abandon any branch that has grown pathologically deep so the move buffers and
