@@ -22,9 +22,9 @@ Param (aliases)	KlondikeSolver	SimpleSolver	Notes
 -deck /d	✅	❌	Load a specific deck string
 -out /o	✅	❌	Output method 0/1/2
 -fast /f	✅	❌	Best-effort (non-minimal) solve
--multi /m	✅	❌	Multithreaded solve
--beginner	❌	✅	Constraint set
--expert /exp	❌	✅	Constraint set
+-multi /m	✅	✅	Multithreaded solve (SimpleSolver: unconstrained only)
+-constraint /c	❌	✅	Constraint: level1|level2|level3|level4|stepup
+-output /o	❌	✅	Write CSV to a file (range mode)
 Bare arg	file path	game number	Different meaning
 Example:
 
