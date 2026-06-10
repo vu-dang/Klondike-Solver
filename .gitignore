@@ -164,3 +164,4 @@ $RECYCLE.BIN/
 level.js
 .vs
 *.exe
+python/output/*.js

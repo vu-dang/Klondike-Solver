@@ -469,13 +469,37 @@ void Solitaire::FilterLevel4Moves() {
 }
 void Solitaire::FilterLevel3Moves() {
 	//Level 3 inherits the level-4 base (never un-play a foundation card) and adds: draw
-	//from the stock only when no other move exists. A draw is encoded as a talon move with
-	//From == WASTE and Extra > 0 (the number of cards flipped from the stock to expose the
-	//played card). Playing a card already on top of the waste (Extra == 0), any tableau
-	//move, and any move to a foundation are NOT draws. So whenever at least one non-draw
-	//move is available we strip every draw move from the branch set. The un-play removal
-	//runs first so the all-or-nothing guard below can never empty the move set.
+	//from the stock only when no other move exists, with one exception. A draw is encoded as
+	//a talon move with From == WASTE and Extra > 0 (the number of cards flipped from the
+	//stock to expose the played card). Playing a card already on top of the waste (Extra ==
+	//0), any tableau move, and any move to a foundation are NOT draws.
+	//
+	//Exception: when the waste is empty and the stock still holds cards, the solver MUST turn
+	//the stock over, so we keep only the draw moves and prune everything else. A "draw" move
+	//here is fused with playing the exposed card, so if no reachable stock card is currently
+	//playable there are no draw moves to force; the guard then leaves the set untouched rather
+	//than emptying it. Otherwise the usual rule applies: whenever at least one non-draw move
+	//is available we strip every draw move from the branch set. The un-play removal runs first
+	//so the all-or-nothing guards below can never empty the move set.
 	FilterLevel4Moves();
+
+	if (piles[WASTE].Size() == 0 && piles[STOCK].Size() > 0) {
+		int draws = 0;
+		for (int i = 0; i < movesAvailableCount; i++) {
+			Move m = movesAvailable[i];
+			if (m.From == WASTE && m.Extra > 0) { draws++; }
+		}
+
+		if (draws == 0 || draws == movesAvailableCount) { return; }
+
+		int write = 0;
+		for (int i = 0; i < movesAvailableCount; i++) {
+			Move m = movesAvailable[i];
+			if (m.From == WASTE && m.Extra > 0) { movesAvailable[write++] = m; }
+		}
+		movesAvailableCount = write;
+		return;
+	}
 
 	int nonDraw = 0;
 	for (int i = 0; i < movesAvailableCount; i++) {
@@ -492,7 +516,7 @@ void Solitaire::FilterLevel3Moves() {
 	}
 	movesAvailableCount = write;
 }
-void Solitaire::FilterLevel2Moves() {
+void Solitaire::FilterLevel2WasteMoves() {
 	//Level 2 inherits the level-3 rules and adds: when any move onto a foundation OR any
 	//play of the face-up top waste card is available, keep only those (the union of all
 	//foundation moves and all waste-card plays) and prune everything else. After level 3
@@ -509,6 +533,29 @@ void Solitaire::FilterLevel2Moves() {
 	int write = 0;
 	for (int i = 0; i < movesAvailableCount; i++) {
 		if (movesAvailable[i].To >= FOUNDATION1C || movesAvailable[i].From == WASTE) { movesAvailable[write++] = movesAvailable[i]; }
+	}
+	movesAvailableCount = write;
+}
+void Solitaire::FilterLevel2Moves() {
+	//Level 2 inherits the level-3 rules and adds: when any move onto a foundation OR any
+	//tableau-to-tableau move is available, keep only those (the union of all foundation moves
+	//and all tableau-to-tableau moves) and prune everything else. A tableau-to-tableau move
+	//has both From and To in TABLEAU1..TABLEAU7; a foundation move has To >= FOUNDATION1C.
+	//This predicate does not depend on level 3 having stripped draws first.
+	FilterLevel3Moves();
+
+	int kept = 0;
+	for (int i = 0; i < movesAvailableCount; i++) {
+		Move m = movesAvailable[i];
+		if (m.To >= FOUNDATION1C || (m.From >= TABLEAU1 && m.From <= TABLEAU7 && m.To >= TABLEAU1 && m.To <= TABLEAU7)) { kept++; }
+	}
+
+	if (kept == 0 || kept == movesAvailableCount) { return; }
+
+	int write = 0;
+	for (int i = 0; i < movesAvailableCount; i++) {
+		Move m = movesAvailable[i];
+		if (m.To >= FOUNDATION1C || (m.From >= TABLEAU1 && m.From <= TABLEAU7 && m.To >= TABLEAU1 && m.To <= TABLEAU7)) { movesAvailable[write++] = m; }
 	}
 	movesAvailableCount = write;
 }
@@ -534,9 +581,10 @@ void Solitaire::FilterLevel1Moves() {
 SolveResult Solitaire::SolveLevel3(int maxClosedCount) {
 	//Exhaustive best-first search, identical to SolveMinimal except that the branch set at
 	//each state is first passed through FilterLevel3Moves: a foundation card is never
-	//un-played, and drawing from the stock is forbidden while any other move is available.
-	//The result is the minimal length solution obeying those constraints, or Impossible if
-	//they make the deal unwinnable.
+	//un-played, and drawing from the stock is forbidden while any other move is available --
+	//except when the waste is empty and the stock still has cards, where the solver must draw
+	//(only draw moves are explored). The result is the minimal length solution obeying those
+	//constraints, or Impossible if they make the deal unwinnable.
 	UpdateAvailableMoves();
 	FilterLevel3Moves();
 	//A constrained game can present a chain of forced single moves; the movesMadeCount
@@ -808,9 +856,10 @@ SolveResult Solitaire::SolveLevel1(int maxClosedCount) {
 SolveResult Solitaire::SolveLevel2(int maxClosedCount) {
 	//Exhaustive best-first search identical to SolveLevel3, but the branch set at each state
 	//is passed through FilterLevel2Moves instead. Level 2 inherits the higher levels' rules
-	//(never un-play a foundation card; no drawing while a card move exists) and adds: when
-	//any foundation move OR waste-card play is available, only those are explored. Returns
-	//the minimal solution obeying those constraints, or Impossible.
+	//(never un-play a foundation card; no drawing while a card move exists, except a forced
+	//draw when the waste is empty and stock has cards) and adds: when any foundation move OR
+	//tableau-to-tableau move is available, only those are explored. Returns the minimal
+	//solution obeying those constraints, or Impossible.
 	UpdateAvailableMoves();
 	FilterLevel2Moves();
 	//A constrained game can present a chain of forced single moves; the movesMadeCount

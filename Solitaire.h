@@ -33,6 +33,7 @@ private:
 	int GetTalonCards(Card talon[], int talonMoves[]);
 	void FilterLevel1Moves();
 	void FilterLevel2Moves();
+	void FilterLevel2WasteMoves();
 	void FilterLevel3Moves();
 	void FilterLevel4Moves();
 	void ApplyFilter(int level);

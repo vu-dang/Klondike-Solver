@@ -23,10 +23,12 @@ using namespace std;
 //
 //  level3 (/CONSTRAINT level3) - level4's rule, plus: never draw from the stock while
 //          any other move is available (a tableau move, a move to a foundation, or a
-//          play of the current waste card onto a tableau column).
+//          play of the current waste card onto a tableau column), EXCEPT when the waste
+//          is empty and the stock still has cards, where the solver must draw (only the
+//          draw moves are explored).
 //
 //  level2 (/CONSTRAINT level2) - level3's rules, plus: when any move onto a foundation
-//          OR any play of the top waste card is available, explore only those.
+//          OR any tableau-to-tableau move is available, explore only those.
 //
 //  level1 (/CONSTRAINT level1) - level2's rules, plus: when any move onto a foundation
 //          is available, explore only the foundation moves.
@@ -191,8 +193,9 @@ int main(int argc, char * argv[]) {
 			cout << "  /CONSTRAINT mode [/C mode]  Constraint set to impose. Each level adds a rule on\n";
 			cout << "                    top of the next (level1 is the most restrictive):\n";
 			cout << "                      level4 - never un-play a foundation card.\n";
-			cout << "                      level3 - level4, plus never draw from stock while another move exists.\n";
-			cout << "                      level2 - level3, plus explore only foundation/waste moves when any exist.\n";
+			cout << "                      level3 - level4, plus never draw from stock while another move exists\n";
+			cout << "                               (must draw when the waste is empty and stock still has cards).\n";
+			cout << "                      level2 - level3, plus explore only foundation/tableau-to-tableau moves when any exist.\n";
 			cout << "                      level1 - level2, plus explore only foundation moves when any exist.\n";
 			cout << "                      stepup - try level1, then level2, level3, level4, then unconstrained.\n";
 			cout << "                    Omit /CONSTRAINT to run the unconstrained minimal solver.\n";
