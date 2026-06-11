@@ -102,30 +102,33 @@ def stock_difficulty(board):
     """Estimate stock difficulty for draw-3 play.
 
     The stock is drawn from the top of the pile (the high-index end of the stock
-    list) in groups of 3. Within each drawn group the third card lands on top and
-    is accessible, while the earlier cards are buried beneath it:
-      - the 1st-drawn card is blocked by the 2nd and 3rd,
-      - the 2nd-drawn card is blocked by the 3rd.
-    A card only counts as blocked when the card on top of it has a higher rank.
-    Kings (rank 13) are ignored as blockers. A blocker of the same color as the
-    card it blocks is weighted by SAME_COLOR_MULTIPLIER. Earlier groups are
-    harder to clear, so each group's contribution is scaled by a position weight
-    that decreases linearly from EARLY_GROUP_WEIGHT (first group) down to
-    LATE_GROUP_WEIGHT (last group). Tally those blocked cards across every
-    group of 3.
+    list) in groups of 3. Within each drawn group the third-drawn card lands on
+    top and is accessible, with the earlier-drawn cards buried beneath it, so
+    ordered from the top the group sits at positions 0 (top), 1, 2 (bottom).
+
+    Aces and kings are the cards worth digging for. Each group scores a single
+    value:
+      - if the group holds no ace (rank 1) or king (rank 13), the value is 1;
+      - otherwise scan from the top and take the position of the first ace/king
+        that is buried under an ordinary (non-ace/non-king) card. An ace/king
+        that sits on top with no ordinary card above it is accessible and does
+        not count, so a group whose only aces/kings are all accessible scores 0.
+
+    Examples written top -> bottom: AAA -> 0, KAA -> 0, K3A -> 2, 33K -> 2,
+    3AK -> 1. Earlier groups are harder to clear, so each group's value is
+    scaled by a position weight that eases linearly from EARLY_GROUP_WEIGHT
+    (first group) down to LATE_GROUP_WEIGHT (last group). Sum the weighted
+    values across every full group of 3.
     """
+    ACE = 1
     KING = 13
-    SAME_COLOR_MULTIPLIER = 2.5
-    EARLY_GROUP_WEIGHT = 2.0
-    LATE_GROUP_WEIGHT = 1.0
+    group_weight = 3.0
+    iteration_multiplier = 0.7
+    position_multiplier = 2.0
 
-    def is_red(card):
-        return card.suit & 1  # suits: 0=C,1=D,2=S,3=H -> red are the odd ones
 
-    def block_value(card, top):
-        if top.rank > card.rank and top.rank != KING:
-            return SAME_COLOR_MULTIPLIER if is_red(top) == is_red(card) else 1.0
-        return 0.0
+    def is_key(card):
+        return card.rank == ACE or card.rank == KING
 
     # Draw order: top of the pile first (reverse of the bottom->top stock list).
     draw_order = list(reversed(board["stock"]))
@@ -138,19 +141,27 @@ def stock_difficulty(board):
 
     total = 0.0
     for i, (first, second, third) in enumerate(groups):
-        # Position weight: EARLY for the first group, easing to LATE for the last.
-        if len(groups) > 1:
-            t = i / (len(groups) - 1)
-            position_weight = EARLY_GROUP_WEIGHT + t * (LATE_GROUP_WEIGHT - EARLY_GROUP_WEIGHT)
+
+
+        # Ordered from the top (accessible) down to the bottom (buried).
+        top_to_bottom = (third, second, first)
+        if not any(is_key(card) for card in top_to_bottom):
+            value = 1  # no ace/king worth digging for
         else:
-            position_weight = EARLY_GROUP_WEIGHT
-        # 1st blocked by 2nd and/or 3rd; 2nd blocked by 3rd (higher rank on top).
-        group_value = (
-            block_value(first, second)
-            + block_value(first, third)
-            + block_value(second, third)
-        )
-        total += position_weight * group_value
+            # Depth of the topmost ace/king that an ordinary card sits on; an
+            # ace/king reached before any ordinary card is accessible (0).
+            value = 0
+            passed_ordinary = False
+            for position, card in enumerate(top_to_bottom):
+                if is_key(card):
+                    if passed_ordinary:
+                        value = position * position_multiplier
+                        break
+                else:
+                    passed_ordinary = True
+
+        total += value * group_weight 
+        group_weight *= iteration_multiplier  # later groups are easier to clear
     return total
 
 def get_games_from_csv(file_path):
@@ -175,17 +186,23 @@ def get_games_from_csv(file_path):
     return games
 
 
+def score_game(game_number):
+    """Return a game's (tableau_diff, stock_diff) difficulty components."""
+    board = generate_board(game_number)
+    return tableau_difficulty(board), stock_difficulty(board)
+
+
 def estimate_difficulty(game_number):
     """Combined difficulty estimate: tableau blocking plus stock blocking."""
-    board = generate_board(game_number)
-    return tableau_difficulty(board) + stock_difficulty(board)
+    tableau_diff, stock_diff = score_game(game_number)
+    return tableau_diff + stock_diff
 
 
 def sort_by_difficulty(games):
-    """Score each game once and return (game_number, difficulty) pairs sorted
-    ascending by difficulty (easiest first)."""
-    scored = [(game, estimate_difficulty(game)) for game in games]
-    scored.sort(key=lambda pair: pair[1])
+    """Score each game once and return (game, tableau_diff, stock_diff) rows
+    sorted ascending by combined difficulty (easiest first)."""
+    scored = [(game, *score_game(game)) for game in games]
+    scored.sort(key=lambda row: row[1] + row[2])
     return scored
 
 
@@ -194,19 +211,60 @@ def write_levels_js(file_path, scored_games):
     difficulty order as `all_games`."""
     with open(file_path, "w") as f:
         f.write("export const all_games = [\n")
-        for game, _ in scored_games:
+        for game, *_ in scored_games:
             f.write(f"\t{game},\n")
         f.write("];\n")
 
 
+def annotate_csv(in_path, out_path):
+    """Copy a results CSV, appending `tableau_diff` and `stock_diff` columns
+    computed from the game number in the first column.
+
+    All original columns are preserved. Rows are sorted ascending by
+    `constraint`, then `tableau_diff`, then `stock_diff`. The first non-blank row
+    is treated as the header; difficulty values are rounded to 4 decimal places.
+    """
+    with open(in_path, newline="") as src:
+        rows = [row for row in csv.reader(src) if row]  # drop blank lines
+    if not rows:
+        return  # nothing to write
+
+    header, *data = rows
+    constraint_idx = header.index("constraint") if "constraint" in header else None
+
+    scored = []
+    for row in data:
+        tableau_diff, stock_diff = score_game(int(row[0]))
+        constraint = row[constraint_idx] if constraint_idx is not None else ""
+        scored.append((constraint, tableau_diff, stock_diff, row))
+    # Sort by constraint, then tableau_diff, then stock_diff (all ascending).
+    scored.sort(key=lambda r: (r[0], r[1], r[2]))
+
+    out_rows = [header + ["tableau_diff", "stock_diff"]]
+    out_rows += [
+        row + [round(tableau_diff, 4), round(stock_diff, 4)]
+        for _, tableau_diff, stock_diff, row in scored
+    ]
+
+    with open(out_path, "w", newline="") as dst:
+        csv.writer(dst).writerows(out_rows)
+
+
+def process_directory(input_dir, output_dir):
+    """Annotate every .csv in input_dir with difficulty columns and write the
+    result to output_dir under the same filename. Returns the filenames done."""
+    os.makedirs(output_dir, exist_ok=True)
+    names = sorted(n for n in os.listdir(input_dir) if n.lower().endswith(".csv"))
+    for name in names:
+        annotate_csv(os.path.join(input_dir, name), os.path.join(output_dir, name))
+        print(f"wrote {os.path.join(output_dir, name)}")
+    return names
+
+
 if __name__ == "__main__":
-    games = get_games_from_csv("python/games.csv")
-    scored_games = sort_by_difficulty(games)
-    # Write sorted games to a new CSV file as `game_number,difficulty`.
-    with open("python/sorted_games.csv", "w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["game_number", "difficulty"])
-        for game, difficulty in scored_games:
-            writer.writerow([game, difficulty])
-    # Also export the game numbers (ascending difficulty) as a JS module.
-    write_levels_js("python/level.js", scored_games)
+    here = os.path.dirname(os.path.abspath(__file__))
+    input_dir = os.path.join(here, "input")
+    output_dir = os.path.join(here, "output")
+    done = process_directory(input_dir, output_dir)
+    if not done:
+        print(f"no CSV files found in {input_dir}")
